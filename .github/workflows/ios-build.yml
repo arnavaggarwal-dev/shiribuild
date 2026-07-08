@@ -32,10 +32,12 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            archive | xcpretty || true
+            archive
 
       - name: Package IPA
         run: |
+          echo "--- archive contents ---"
+          find build/MyApp.xcarchive -maxdepth 4
           mkdir -p Payload
           cp -r "build/MyApp.xcarchive/Products/Applications/MyApp.app" Payload/
           zip -r MyApp.ipa Payload
