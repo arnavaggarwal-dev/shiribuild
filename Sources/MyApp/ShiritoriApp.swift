@@ -1955,6 +1955,38 @@ struct HostWaitingRoomView: View {
     @ObservedObject var host: LANHost
     var total: Int
 
+    /// The device's local IPv4 that other players can actually reach.
+    /// Priority: en0 (Wi-Fi client) → bridge100 (this phone IS the hotspot;
+    /// host is always 172.20.10.1 there) → any other private-LAN interface.
+    /// Cellular (pdp_ip*), VPN (utun*/ipsec*), and Apple p2p (awdl0/llw0)
+    /// interfaces are excluded: those addresses look valid but are
+    /// unreachable by LAN peers, which sends PC players into a dead end.
+    private var wifiIPv4: String? {
+        var byName: [String: String] = [:]
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return nil }
+        defer { freeifaddrs(ifaddr) }
+        for ptr in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let ifa = ptr.pointee
+            guard let sa = ifa.ifa_addr, sa.pointee.sa_family == UInt8(AF_INET),
+                  (ifa.ifa_flags & UInt32(IFF_LOOPBACK)) == 0 else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            guard getnameinfo(sa, socklen_t(sa.pointee.sa_len), &host, socklen_t(host.count),
+                              nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            let ip = String(cString: host)
+            guard !ip.hasPrefix("169.254") else { continue }
+            byName[String(cString: ifa.ifa_name)] = ip
+        }
+        if let wifi = byName["en0"] { return wifi }
+        if let hotspot = byName["bridge100"] { return hotspot }
+        // Last resort: any remaining interface that isn't cellular/VPN/p2p.
+        let unreachablePrefixes = ["pdp_ip", "utun", "ipsec", "awdl", "llw"]
+        for (name, ip) in byName where !unreachablePrefixes.contains(where: { name.hasPrefix($0) }) {
+            return ip
+        }
+        return nil
+    }
+
     var body: some View {
         VStack(spacing: 22) {
             Text("Lobby").font(GameFont.title(24)).foregroundStyle(Palette.accent)
@@ -1968,6 +2000,21 @@ struct HostWaitingRoomView: View {
                     .font(GameFont.mono(24)).foregroundStyle(Palette.accent)
             }
             .padding(28)
+            .glassCard()
+
+            // Desktop players can't see the Bonjour broadcast — they type
+            // this into their PC client to join.
+            VStack(spacing: 6) {
+                Text("PC players join with").font(GameFont.caption(11)).foregroundStyle(Palette.dim)
+                if let ip = wifiIPv4 {
+                    Text(ip).font(GameFont.mono(20)).foregroundStyle(Palette.text)
+                        .textSelection(.enabled)
+                } else {
+                    Text("No Wi-Fi address found — check Wi-Fi is on")
+                        .font(GameFont.caption()).foregroundStyle(Palette.redBright)
+                }
+            }
+            .padding(.horizontal, 24).padding(.vertical, 14)
             .glassCard()
 
             if let err = host.startError {
