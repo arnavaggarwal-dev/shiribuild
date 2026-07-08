@@ -253,6 +253,15 @@ final class DictionaryStore: ObservableObject {
 
     func load() {
         guard !isLoaded else { return }
+        // Belt-and-suspenders: whatever the actual slow part turns out to
+        // be, the loading screen must never be able to spin forever. If the
+        // load hasn't finished in 6s, fall back to unvalidated play —
+        // isValid() already treats an empty wordSet as "anything goes".
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self, !self.isLoaded else { return }
+            self.loadFailed = true
+            self.isLoaded = true
+        }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             // XCODEGEN_BUILD is set as an active compilation condition by the
@@ -268,7 +277,14 @@ final class DictionaryStore: ObservableObject {
             #endif
             guard let url = dictBundle.url(forResource: "words_dictionary", withExtension: "json"),
                   let data = try? Data(contentsOf: url),
-                  let raw = try? JSONDecoder().decode([String: Int].self, from: data) else {
+                  // JSONDecoder's Codable path wraps every key in a dynamic
+                  // CodingKey — fine for small structs, but catastrophically
+                  // slow (minutes, not milliseconds) on a ~466k-entry flat
+                  // dictionary like this one. JSONSerialization parses the
+                  // same JSON directly into Foundation objects with none of
+                  // that per-key reflection overhead.
+                  let jsonObj = try? JSONSerialization.jsonObject(with: data),
+                  let raw = jsonObj as? [String: Int] else {
                 DispatchQueue.main.async { self.loadFailed = true; self.isLoaded = true }
                 return
             }
