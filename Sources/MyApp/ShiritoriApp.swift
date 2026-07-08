@@ -1476,6 +1476,20 @@ final class AppModel: ObservableObject {
     let dict = DictionaryStore()
     let browser = LANBrowser()
 
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        // SwiftUI does NOT observe nested ObservableObjects: RootView watches
+        // AppModel, but dict is its own ObservableObject, so dict.isLoaded
+        // flipping never triggered a re-render — the loading screen sat there
+        // forever even though the dictionary had loaded fine. Forward the
+        // child's change signal through the parent.
+        dict.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+    }
+
     @Published var engine: GameEngine?
     @Published var lanHost: LANHost?
     @Published var lanClient: LANClient?
