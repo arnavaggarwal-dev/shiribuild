@@ -1,0 +1,40 @@
+name: MyApp
+options:
+  bundleIdPrefix: com.arnavaggarwal
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    # Same reasoning as the xtool build's swiftLanguageMode(.v5): the code
+    # is pre-concurrency style (DispatchQueue/Network callbacks driving
+    # @Published state), so Swift 6 strict-concurrency checking would
+    # reject dozens of lines. SWIFT_VERSION 5.0 keeps language mode 5
+    # regardless of which Xcode/toolchain the runner has.
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+    ENABLE_PREVIEWS: NO
+
+targets:
+  MyApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/MyApp
+        excludes:
+          - "Info.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.arnavaggarwal.myapp
+        PRODUCT_NAME: Shiritori
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Sources/MyApp/Info.plist
+        # Selects the Bundle.main branch in ShiritoriApp.swift instead of
+        # the SwiftPM-only Bundle.module accessor.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "XCODEGEN_BUILD"
+        TARGETED_DEVICE_FAMILY: "1,2"

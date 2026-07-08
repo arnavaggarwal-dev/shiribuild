@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Shiritori</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Used to find and join nearby Shiritori games on your Wi-Fi.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_shiritori._tcp</string>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,49 @@
+name: iOS Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+
+      - name: Archive (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project MyApp.xcodeproj \
+            -scheme MyApp \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath "$PWD/build/MyApp.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive | xcpretty || true
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r "build/MyApp.xcarchive/Products/Applications/MyApp.app" Payload/
+          zip -r MyApp.ipa Payload
+          mkdir -p dist
+          mv MyApp.ipa dist/
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipa
+          path: dist/MyApp.ipa

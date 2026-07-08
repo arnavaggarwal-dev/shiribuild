@@ -1,0 +1,4 @@
+version: 1
+bundleID: "com.arnavaggarwal.myapp"
+iconPath: "AppIcon-1024.png"
+infoPath: "Info.plist"
