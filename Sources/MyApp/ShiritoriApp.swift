@@ -24,6 +24,7 @@ import SwiftUI
 import Network
 import Combine
 import UIKit
+import AVFoundation
 
 // MARK: - Palette
 
@@ -384,24 +385,120 @@ func botPickWord(start: Character, used: Set<String>, forbidden: Character,
 
 // MARK: - Haptics
 
+// MARK: - Tone Engine
+
+/// Generates short one-shot sine-wave "dings" to pair with haptics — an
+/// exponential-decay envelope so each tone sounds like a plucked note
+/// rather than a harsh buzz. Kept dead simple: no sample files, buffers are
+/// synthesized on the fly (they're a few KB and ~0.15s, cost is trivial).
+final class ToneEngine {
+    static let shared = ToneEngine()
+    private let engine = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private let sampleRate: Double = 44100
+
+    private init() {
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: nil)
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
+        try? engine.start()
+    }
+
+    func play(frequency: Double, duration: Double = 0.14, volume: Float = 0.5) {
+        guard let buffer = makeBuffer(frequency: frequency, duration: duration, volume: volume) else { return }
+        if !engine.isRunning { try? engine.start() }
+        player.scheduleBuffer(buffer, completionHandler: nil)
+        if !player.isPlaying { player.play() }
+    }
+
+    /// Two quick notes back to back — used for the "teh-teh" loser cue.
+    func playDouble(frequency: Double, gap: Double = 0.11, duration: Double = 0.09, volume: Float = 0.45) {
+        play(frequency: frequency, duration: duration, volume: volume)
+        DispatchQueue.main.asyncAfter(deadline: .now() + gap) { [weak self] in
+            self?.play(frequency: frequency * 0.85, duration: duration, volume: volume)
+        }
+    }
+
+    private func makeBuffer(frequency: Double, duration: Double, volume: Float) -> AVAudioPCMBuffer? {
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
+        buffer.frameLength = frameCount
+        let data = buffer.floatChannelData![0]
+        for i in 0..<Int(frameCount) {
+            let t = Double(i) / sampleRate
+            let envelope = exp(-7.0 * t)   // fast attack, quick exponential decay
+            data[i] = Float(sin(2.0 * .pi * frequency * t)) * volume * Float(envelope)
+        }
+        return buffer
+    }
+}
+
+// MARK: - Haptics
+
 enum Haptics {
+    /// Every accepted word: success haptic + a bright high-pitched ding.
+    /// Pitch is fixed high here (this is "the correct answer" cue, not a
+    /// graded one) — the graded/"tougher = higher" pitch lives in sliderTick.
     static func accepted() {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+        ToneEngine.shared.play(frequency: 880, duration: 0.16, volume: 0.55)
     }
+
     static func rejected() {
         UINotificationFeedbackGenerator().notificationOccurred(.error)
+        ToneEngine.shared.play(frequency: 220, duration: 0.14, volume: 0.4)
     }
+
     static func warning() {
-        let gen = UIImpactFeedbackGenerator(style: .medium)
-        gen.impactOccurred()
+        let gen = UIImpactFeedbackGenerator(style: .heavy)
+        gen.impactOccurred(intensity: 1.0)
     }
+
     static func winner() {
         let gen = UIImpactFeedbackGenerator(style: .heavy)
-        gen.impactOccurred()
+        gen.impactOccurred(intensity: 1.0)
+        ToneEngine.shared.play(frequency: 660, duration: 0.18, volume: 0.6)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            ToneEngine.shared.play(frequency: 990, duration: 0.3, volume: 0.6)
+        }
     }
+
+    /// Base tap for every button — bumped from .light to .medium at full
+    /// intensity so navigation reads as a firmer, more deliberate click.
     static func tap() {
-        let gen = UIImpactFeedbackGenerator(style: .light)
-        gen.impactOccurred()
+        let gen = UIImpactFeedbackGenerator(style: .medium)
+        gen.impactOccurred(intensity: 1.0)
+    }
+
+    /// Slider "cascade" tick: fire once per discrete step while dragging.
+    /// `fraction` is 0...1 of how far into the range the value sits —
+    /// intensity AND pitch both scale up with it, so a slider representing
+    /// something getting "tougher" (bot difficulty, player count, etc.)
+    /// feels and sounds more intense near the top of its range.
+    static func sliderTick(fraction: Double) {
+        let f = min(max(fraction, 0), 1)
+        let gen = UIImpactFeedbackGenerator(style: f > 0.66 ? .heavy : (f > 0.33 ? .medium : .light))
+        gen.impactOccurred(intensity: 0.5 + f * 0.5)
+        ToneEngine.shared.play(frequency: 260 + f * 620, duration: 0.06, volume: 0.28)
+    }
+
+    /// 2-second "teh-teh… teh-teh…" losing cue: four double-pulses (each a
+    /// heavy haptic pair plus a falling two-note chirp) spaced across ~2s.
+    static func loser() {
+        for i in 0..<4 {
+            let delay = Double(i) * 0.5
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                let gen = UIImpactFeedbackGenerator(style: .heavy)
+                gen.impactOccurred(intensity: 1.0)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.11) {
+                    let gen2 = UIImpactFeedbackGenerator(style: .heavy)
+                    gen2.impactOccurred(intensity: 0.85)
+                }
+                ToneEngine.shared.playDouble(frequency: 180, gap: 0.11, duration: 0.1, volume: 0.4)
+            }
+        }
     }
 }
 
@@ -539,9 +636,23 @@ struct AnimatedNebulaBackground: View {
                 Canvas { ctx, size in
                     let t = timeline.date.timeIntervalSinceReferenceDate
                     for star in stars {
-                        let drift = CGFloat(t) * 2 * star.depth
-                        let x = (star.x * size.width + drift).truncatingRemainder(dividingBy: size.width)
-                        let y = star.y * size.height
+                        // Downward cascade speed scales with depth (parallax).
+                        let speed: CGFloat = 0.035 + star.depth * 0.05
+                        let rawY = star.y + CGFloat(t) * speed
+                        let wrapCount = Int(rawY)               // how many times this star has looped
+                        let y = (rawY.truncatingRemainder(dividingBy: 1) + 1).truncatingRemainder(dividingBy: 1) * size.height
+
+                        // Re-randomize x each time a star completes a loop so
+                        // falling stars don't pile up into visible repeating
+                        // columns/streaks — deterministic hash of (id, wrapCount)
+                        // means no mutable state needed, just a pure function of t.
+                        var hasher = Hasher()
+                        hasher.combine(star.id)
+                        hasher.combine(wrapCount)
+                        let hashed = abs(hasher.finalize())
+                        let xJitter = CGFloat(hashed % 10_000) / 10_000
+                        let x = ((star.x + xJitter * 0.6).truncatingRemainder(dividingBy: 1)) * size.width
+
                         let twinkle = 0.35 + 0.65 * abs(sin(t * star.twinkleSpeed + star.twinklePhase))
                         let rect = CGRect(x: x, y: y, width: star.size, height: star.size)
                         ctx.opacity = twinkle * Double(star.depth)
@@ -649,6 +760,11 @@ struct LabeledSlider: View {
             Slider(value: $value, in: range, step: step)
                 .tint(tint)
                 .frame(minHeight: 44)
+                .onChange(of: value) { _, newValue in
+                    let span = range.upperBound - range.lowerBound
+                    let fraction = span > 0 ? (newValue - range.lowerBound) / span : 0
+                    Haptics.sliderTick(fraction: fraction)
+                }
         }
     }
 }
@@ -1017,7 +1133,7 @@ final class GameEngine: ObservableObject {
         let next = nextPlayer()
         state.activePlayers.removeAll { $0 == p }
         lastEvent = .eliminated(player: p, isBot: isBot(p))
-        Haptics.rejected()
+        Haptics.loser()
         setMessage(reason, color)
         if state.activePlayers.count == 1 {
             stop()
@@ -1217,6 +1333,13 @@ final class LANHost: ObservableObject {
     private var connections: [Int: NWConnection] = [:]
     private var nextPlayerSlot = 2
     private var remoteJoined = 0
+    /// Set before intentionally cancelling connections (stopHosting, or the
+    /// host backgrounding the app). NWConnection.cancel() delivers its
+    /// .cancelled state update asynchronously — without this guard, that
+    /// delayed callback reaches handleDisconnect AFTER teardown started,
+    /// forceRemove sees the host as the sole remaining active player, and
+    /// spuriously declares the host the winner for leaving the game.
+    private var isShuttingDown = false
 
     init(numPlayers: Int, dict: DictionaryStore) {
         self.numPlayers = numPlayers
@@ -1287,6 +1410,7 @@ final class LANHost: ObservableObject {
     }
 
     private func handleDisconnect(_ slot: Int) {
+        guard !isShuttingDown else { return }
         guard connections[slot] != nil else { return }
         connections.removeValue(forKey: slot)
         engine.forceRemove(slot, note: "Player \(slot) disconnected.")
@@ -1300,6 +1424,7 @@ final class LANHost: ObservableObject {
     }
 
     func stopHosting() {
+        isShuttingDown = true
         listener?.cancel(); listener = nil
         for c in connections.values { c.cancel() }
         connections.removeAll()
@@ -1506,6 +1631,24 @@ final class AppModel: ObservableObject {
         route = .lobby
     }
 
+    /// Called when the app backgrounds. If we're actively hosting a LAN
+    /// game, tear it down right now — proactively, while still foreground —
+    /// rather than letting the OS suspend us mid-session. Without this, the
+    /// connection eventually gets discovered dead only when the app is
+    /// reopened, and by then forceRemove sees the host as the sole
+    /// remaining player and spuriously declares them the winner for having
+    /// left. Ending it here (no winner, just back to lobby) is honest about
+    /// what actually happened: the host walked away.
+    func handleScenePhaseChange(_ phase: ScenePhase) {
+        guard phase == .background, lanHost != nil else { return }
+        switch route {
+        case .waitingHost, .hostGame:
+            backToLobby()
+        default:
+            break
+        }
+    }
+
     // MARK: bot mode
 
     func startBotGame() {
@@ -1628,7 +1771,7 @@ struct LoadingView: View {
                     .foregroundStyle(Palette.dim)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24).padding(.top, 8)
-                Button("Continue anyway") { model.forceReady() }
+                Button("Continue anyway") { Haptics.tap(); model.forceReady() }
                     .font(GameFont.caption()).foregroundStyle(Palette.accent).padding(.top, 4)
             }
         }
@@ -1643,6 +1786,13 @@ struct LoadingView: View {
 
 struct LobbyView: View {
     @EnvironmentObject var model: AppModel
+    @State private var showNetworkAlert = false
+    @State private var pendingNetworkAction: (() -> Void)?
+
+    private func requireSameNetwork(then action: @escaping () -> Void) {
+        pendingNetworkAction = action
+        showNetworkAlert = true
+    }
 
     var body: some View {
         ScrollView {
@@ -1674,17 +1824,23 @@ struct LobbyView: View {
                     title: "Host a Game", subtitle: "LAN · up to 8 players",
                     detail: "Start a game nearby players can discover and join automatically — no IP address needed.",
                     icon: "antenna.radiowaves.left.and.right", accent: Palette.glow
-                ) { model.route = .hostSetup }
+                ) { requireSameNetwork { model.route = .hostSetup } }
 
                 LobbyModeCard(
                     title: "Join a Game", subtitle: "LAN",
                     detail: "Find a game already being hosted on this Wi-Fi network.",
                     icon: "wifi", accent: Palette.green
-                ) { model.startBrowsing() }
+                ) { requireSameNetwork { model.startBrowsing() } }
 
                 Spacer(minLength: 20)
             }
             .padding(.horizontal, 22)
+        }
+        .alert("Same Wi-Fi Required", isPresented: $showNetworkAlert) {
+            Button("Got it") { pendingNetworkAction?(); pendingNetworkAction = nil }
+            Button("Cancel", role: .cancel) { pendingNetworkAction = nil }
+        } message: {
+            Text("Everyone needs to be on the same Wi-Fi network to find each other — including if you're using a personal hotspot: every phone or PC playing must be connected to that same hotspot, not their own cellular data.")
         }
     }
 }
@@ -2262,7 +2418,11 @@ struct DifficultyLiveCard: View {
                 Spacer()
                 Text("\(Int(difficulty))").font(GameFont.headline(12)).foregroundStyle(Palette.glow)
             }
-            Slider(value: $difficulty, in: 1...100, step: 1).tint(difficultyColor(Int(difficulty)))
+            Slider(value: $difficulty, in: 1...100, step: 1)
+                .tint(difficultyColor(Int(difficulty)))
+                .onChange(of: difficulty) { _, newValue in
+                    Haptics.sliderTick(fraction: (newValue - 1) / 99)
+                }
             Text(difficultyLabel(Int(difficulty))).font(GameFont.caption(10)).foregroundStyle(Palette.dim)
             Text("Danger pool: \(dangerPoolPercent)%").font(GameFont.caption(10)).foregroundStyle(Palette.dim)
         }
@@ -2308,7 +2468,7 @@ struct NotepadCard: View {
                     .textInputAutocapitalization(.never)
                     .focused($focused)
                     .onSubmit(save)
-                Button(action: save) {
+                Button(action: { Haptics.tap(); save() }) {
                     Image(systemName: "plus.circle.fill").foregroundStyle(Palette.accent)
                         .font(.system(size: 22))
                 }
@@ -2587,6 +2747,8 @@ struct WinnerView: View {
 
 struct RootView: View {
     @StateObject private var model = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var showPrivacyDisclaimer = !PrivacyDisclaimer.hasBeenSeen
 
     var body: some View {
         ZStack {
@@ -2598,10 +2760,14 @@ struct RootView: View {
                     routedContent
                 }
             }
+            if showPrivacyDisclaimer {
+                PrivacyDisclaimerView { showPrivacyDisclaimer = false }
+            }
         }
         .environmentObject(model)
         .preferredColorScheme(.dark)
         .onAppear { model.loadDictionary() }
+        .onChange(of: scenePhase) { _, phase in model.handleScenePhaseChange(phase) }
     }
 
     @ViewBuilder
