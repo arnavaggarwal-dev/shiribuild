@@ -247,63 +247,110 @@ struct WinnerInfo: Equatable {
 final class DictionaryStore: ObservableObject {
     @Published private(set) var isLoaded = false
     @Published private(set) var loadFailed = false
+    /// Human-readable trace of what the loader tried and where it ended up.
+    /// Shown on the loading screen so failures are visible without a Mac.
+    @Published private(set) var diagnostic = ""
 
     private(set) var wordSet: Set<String> = []
     private(set) var byFirstLetter: [Character: [String]] = [:]
 
+    /// Every place the dictionary might live, depending on how the app was
+    /// built (SwiftPM/xtool nested bundle vs. plain-Xcode app root). We try
+    /// them all rather than betting on one.
+    private func candidateURLs() -> [(String, URL)] {
+        var out: [(String, URL)] = []
+        if let u = Bundle.main.url(forResource: "words_dictionary", withExtension: "json") {
+            out.append(("Bundle.main", u))
+        }
+        // Bundle.main's resourceURL, joined manually (covers odd bundle layouts).
+        if let base = Bundle.main.resourceURL {
+            out.append(("main.resourceURL/", base.appendingPathComponent("words_dictionary.json")))
+        }
+        // The SwiftPM-generated module bundle, if this was an xtool build.
+        // Referenced by name so it compiles even in the Xcode target where
+        // Bundle.module doesn't exist.
+        if let moduleBundleURL = Bundle.main.url(forResource: "MyApp_MyApp", withExtension: "bundle"),
+           let b = Bundle(url: moduleBundleURL),
+           let u = b.url(forResource: "words_dictionary", withExtension: "json") {
+            out.append(("MyApp_MyApp.bundle", u))
+        }
+        return out
+    }
+
     func load() {
         guard !isLoaded else { return }
-        // Belt-and-suspenders: whatever the actual slow part turns out to
-        // be, the loading screen must never be able to spin forever. If the
-        // load hasn't finished in 6s, fall back to unvalidated play —
-        // isValid() already treats an empty wordSet as "anything goes".
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
-            guard let self, !self.isLoaded else { return }
-            self.loadFailed = true
-            self.isLoaded = true
-        }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            // XCODEGEN_BUILD is set as an active compilation condition by the
-            // XcodeGen project (see project.yml) for the plain-Xcode build
-            // path, where resources land straight in the app bundle. The
-            // xtool/SwiftPM build path (no flag) uses the SPM-generated
-            // Bundle.module accessor instead, since resources there live in
-            // a nested MyApp_MyApp.bundle.
-            #if XCODEGEN_BUILD
-            let dictBundle = Bundle.main
-            #else
-            let dictBundle = Bundle.module
-            #endif
-            guard let url = dictBundle.url(forResource: "words_dictionary", withExtension: "json"),
-                  let data = try? Data(contentsOf: url),
-                  // JSONDecoder's Codable path wraps every key in a dynamic
-                  // CodingKey — fine for small structs, but catastrophically
-                  // slow (minutes, not milliseconds) on a ~466k-entry flat
-                  // dictionary like this one. JSONSerialization parses the
-                  // same JSON directly into Foundation objects with none of
-                  // that per-key reflection overhead.
-                  let jsonObj = try? JSONSerialization.jsonObject(with: data),
-                  let raw = jsonObj as? [String: Int] else {
-                DispatchQueue.main.async { self.loadFailed = true; self.isLoaded = true }
+            var trace = ""
+
+            let candidates = self.candidateURLs()
+            trace += "candidates: \(candidates.count)\n"
+
+            // Also list what's actually sitting in the bundle root, so if
+            // none of the candidates hit, we can see what IS there.
+            if let base = Bundle.main.resourceURL,
+               let items = try? FileManager.default.contentsOfDirectory(atPath: base.path) {
+                let jsons = items.filter { $0.hasSuffix(".json") || $0.hasSuffix(".bundle") }
+                trace += "in bundle: \(jsons.isEmpty ? "(no .json/.bundle)" : jsons.joined(separator: ", "))\n"
+            }
+
+            var chosen: URL?
+            for (label, url) in candidates where FileManager.default.fileExists(atPath: url.path) {
+                trace += "found via \(label)\n"
+                chosen = url
+                break
+            }
+
+            guard let url = chosen else {
+                trace += "RESULT: file not found anywhere"
+                self.finish(failed: true, trace: trace)
                 return
             }
+
+            guard let data = try? Data(contentsOf: url) else {
+                trace += "RESULT: found but couldn't read bytes"
+                self.finish(failed: true, trace: trace)
+                return
+            }
+            trace += "read \(data.count / 1024) KB\n"
+
+            guard let jsonObj = try? JSONSerialization.jsonObject(with: data),
+                  let raw = jsonObj as? [String: Int] else {
+                trace += "RESULT: read \(data.count) bytes but JSON parse failed"
+                self.finish(failed: true, trace: trace)
+                return
+            }
+
             var set = Set<String>(minimumCapacity: raw.count)
             var byLetter: [Character: [String]] = [:]
             for word in raw.keys where !word.isEmpty {
                 set.insert(word)
                 byLetter[word[word.startIndex], default: []].append(word)
             }
-            DispatchQueue.main.async {
-                self.wordSet = set
-                self.byFirstLetter = byLetter
-                self.isLoaded = true
-            }
+            trace += "parsed \(set.count) words"
+            self.wordSet = set
+            self.byFirstLetter = byLetter
+            self.finish(failed: false, trace: trace)
+        }
+    }
+
+    private func finish(failed: Bool, trace: String) {
+        DispatchQueue.main.async {
+            self.diagnostic = trace
+            self.loadFailed = failed
+            self.isLoaded = true
         }
     }
 
     func isValid(_ word: String) -> Bool {
         wordSet.isEmpty || wordSet.contains(word)
+    }
+
+    /// Bypass a stuck/failed load and let the user play without validation
+    /// (empty wordSet ⇒ isValid accepts anything).
+    func markReadyUnvalidated() {
+        loadFailed = true
+        isLoaded = true
     }
 }
 
@@ -1434,6 +1481,7 @@ final class AppModel: ObservableObject {
     @Published var lanClient: LANClient?
 
     func loadDictionary() { dict.load() }
+    func forceReady() { dict.markReadyUnvalidated() }
 
     func backToLobby() {
         engine?.stop()
@@ -1544,7 +1592,9 @@ final class AppModel: ObservableObject {
 // MARK: - Loading Screen
 
 struct LoadingView: View {
+    @EnvironmentObject var model: AppModel
     @State private var pulse = false
+    @State private var showDiagnostic = false
 
     var body: some View {
         VStack(spacing: 18) {
@@ -1554,8 +1604,24 @@ struct LoadingView: View {
             Text("SHIRITORI").font(GameFont.title(20)).foregroundStyle(Palette.text).tracking(4)
             BouncingDotsView()
             Text("loading the dictionary…").font(GameFont.caption()).foregroundStyle(Palette.dim)
+
+            // After 3s, surface whatever the loader has recorded so far. If
+            // the file can't be found or parsed, the reason shows here on
+            // screen instead of the app hanging with no explanation.
+            if showDiagnostic && !model.dict.diagnostic.isEmpty {
+                Text(model.dict.diagnostic)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Palette.dim)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24).padding(.top, 8)
+                Button("Continue anyway") { model.forceReady() }
+                    .font(GameFont.caption()).foregroundStyle(Palette.accent).padding(.top, 4)
+            }
         }
-        .onAppear { pulse = true }
+        .onAppear {
+            pulse = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { showDiagnostic = true }
+        }
     }
 }
 
