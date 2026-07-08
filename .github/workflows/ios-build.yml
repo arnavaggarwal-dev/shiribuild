@@ -45,7 +45,7 @@ jobs:
           echo "--- archive contents ---"
           find build/MyApp.xcarchive -maxdepth 4
           mkdir -p Payload
-          cp -r "build/MyApp.xcarchive/Products/Applications/MyApp.app" Payload/
+          cp -r "build/MyApp.xcarchive/Products/Applications/Shiritori.app" Payload/
           zip -r MyApp.ipa Payload
           mkdir -p dist
           mv MyApp.ipa dist/
