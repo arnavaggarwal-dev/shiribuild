@@ -396,18 +396,49 @@ final class ToneEngine {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let sampleRate: Double = 44100
+    // Every buffer we ever generate uses this exact format. Connecting the
+    // graph with `format: nil` lets it inherit whatever the hardware route
+    // happens to be at connect time — if that later changes (AirPods
+    // connecting/disconnecting mid-game is a real, common case), the graph
+    // and the buffers we hand it disagree, and scheduleBuffer raises an
+    // NSException that Swift can't catch, crashing the app outright. Using
+    // one fixed, explicit format here means CoreAudio handles the
+    // conversion to whatever the hardware wants internally instead.
+    private lazy var toneFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
 
     private init() {
         engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: nil)
+        engine.connect(player, to: engine.mainMixerNode, format: toneFormat)
         try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
         try? AVAudioSession.sharedInstance().setActive(true)
         try? engine.start()
+
+        // Route changes (headphones connecting, a call interrupting, etc.)
+        // can invalidate the running graph. Rebuild the connection instead
+        // of leaving stale state that the next scheduleBuffer call would
+        // crash on.
+        NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            self?.rebuildConnection()
+        }
+    }
+
+    private func rebuildConnection() {
+        engine.disconnectNodeOutput(player)
+        engine.connect(player, to: engine.mainMixerNode, format: toneFormat)
+        if !engine.isRunning { try? engine.start() }
     }
 
     func play(frequency: Double, duration: Double = 0.14, volume: Float = 0.5) {
         guard let buffer = makeBuffer(frequency: frequency, duration: duration, volume: volume) else { return }
-        if !engine.isRunning { try? engine.start() }
+        if !engine.isRunning {
+            // A missed sound effect is fine. A crash mid-game is not — if
+            // the engine can't start (interrupted session, no audio route,
+            // etc.), skip this tone entirely rather than schedule a buffer
+            // into a graph that isn't ready for it.
+            guard (try? engine.start()) != nil, engine.isRunning else { return }
+        }
         player.scheduleBuffer(buffer, completionHandler: nil)
         if !player.isPlaying { player.play() }
     }
@@ -422,8 +453,7 @@ final class ToneEngine {
 
     private func makeBuffer(frequency: Double, duration: Double, volume: Float) -> AVAudioPCMBuffer? {
         let frameCount = AVAudioFrameCount(sampleRate * duration)
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: toneFormat, frameCapacity: frameCount) else { return nil }
         buffer.frameLength = frameCount
         let data = buffer.floatChannelData![0]
         for i in 0..<Int(frameCount) {
