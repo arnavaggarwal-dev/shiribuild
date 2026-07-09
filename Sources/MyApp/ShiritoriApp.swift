@@ -545,6 +545,12 @@ private struct ShakeModifier: ViewModifier {
 // MARK: - Small view helpers
 
 /// Frosted floating card used everywhere: lobby tiles, header, score rows.
+/// This stays material-based by design, not by toolchain limitation —
+/// Apple's Liquid Glass HIG explicitly reserves glass for the functional
+/// layer (buttons, controls) and warns against stacking it onto content
+/// surfaces like these. See SolidButton/GhostButton for where the real
+/// .glassEffect()/.buttonStyle(.glass) API is actually used, gated behind
+/// #available(iOS 26, *) so the same IPA works on iOS 17+.
 struct GlassCardStyle: ViewModifier {
     var borderColor: Color = Palette.border
     var fill: Color = Palette.card
@@ -553,15 +559,37 @@ struct GlassCardStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(fill.opacity(0.72))
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+                ZStack {
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(fill.opacity(0.72))
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+
+                    // Diagonal specular sheen — a soft light-from-above
+                    // highlight, the cheapest way to sell "glass" without
+                    // the real refraction API.
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.10), .clear, .clear],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            )
+                        )
+                }
             )
             .overlay(
+                // Two-tone edge: a bright hairline along the top where
+                // light would catch a glass rim, fading to the normal
+                // border color — reads as a lit edge rather than a flat
+                // outline.
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(borderColor, lineWidth: 1)
+                    .strokeBorder(
+                        LinearGradient(colors: [borderColor.opacity(0.9), Color.white.opacity(0.35), borderColor.opacity(0.9)],
+                                       startPoint: .leading, endPoint: .trailing),
+                        lineWidth: 1
+                    )
             )
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .shadow(color: .black.opacity(0.28), radius: 14, x: 0, y: 8)
     }
 }
 
@@ -669,7 +697,26 @@ struct AnimatedNebulaBackground: View {
 
 // MARK: - Buttons
 
+/// Tactile press feedback shared by SolidButton/GhostButton — scales and
+/// dims slightly on press with a springy release. This is the "liquid,
+/// responsive" feel this project can ship today without the literal
+/// Liquid Glass API (see the note on GlassCardStyle above for why).
+struct PressableGlassButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.55), value: configuration.isPressed)
+    }
+}
+
 /// Solid pill button — primary CTA (Start Game, Play Word, Play Again…).
+///
+/// Branches at runtime, not at compile time: this is the same binary
+/// running on iOS 17 and iOS 26 alike (deployment target stays 17.0). On
+/// iOS 26+ it renders with the real Liquid Glass button style; everywhere
+/// else it falls back to the material-based look this project already had.
+/// This is Apple's own documented pattern for "one IPA, works everywhere."
 struct SolidButton: View {
     var title: String
     var systemImage: String? = nil
@@ -679,29 +726,53 @@ struct SolidButton: View {
     var action: () -> Void
 
     var body: some View {
-        Button {
-            Haptics.tap()
-            action()
-        } label: {
-            HStack(spacing: 8) {
-                if let systemImage { Image(systemName: systemImage) }
-                Text(title)
+        Group {
+            if #available(iOS 26, *) {
+                Button {
+                    Haptics.tap()
+                    action()
+                } label: {
+                    HStack(spacing: 8) {
+                        if let systemImage { Image(systemName: systemImage) }
+                        Text(title)
+                    }
+                    .font(GameFont.headline(15))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(color)
+            } else {
+                Button {
+                    Haptics.tap()
+                    action()
+                } label: {
+                    HStack(spacing: 8) {
+                        if let systemImage { Image(systemName: systemImage) }
+                        Text(title)
+                    }
+                    .font(GameFont.headline(15))
+                    .foregroundStyle(Palette.text)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+                    .background(
+                        LinearGradient(colors: [color.opacity(0.95), color.opacity(0.7)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                    .overlay(
+                        LinearGradient(colors: [Color.white.opacity(0.22), .clear],
+                                       startPoint: .top, endPoint: .center)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(PressableGlassButtonStyle())
             }
-            .font(GameFont.headline(15))
-            .foregroundStyle(Palette.text)
-            .frame(maxWidth: .infinity)
-            .frame(height: height)
-            .background(
-                LinearGradient(colors: [color.opacity(0.95), color.opacity(0.7)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
-            )
-            .glow(color, radius: 16, opacity: isEnabled ? 0.45 : 0)
         }
+        .glow(color, radius: 16, opacity: isEnabled ? 0.45 : 0)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.4)
         .accessibilityAddTraits(.isButton)
@@ -709,6 +780,7 @@ struct SolidButton: View {
 }
 
 /// Outline "ghost" button — secondary actions (Back, Fullscreen equivalents).
+/// Same runtime-branch approach as SolidButton above.
 struct GhostButton: View {
     var title: String
     var systemImage: String? = nil
@@ -717,24 +789,48 @@ struct GhostButton: View {
     var action: () -> Void
 
     var body: some View {
-        Button {
-            Haptics.tap()
-            action()
-        } label: {
-            HStack(spacing: 8) {
-                if let systemImage { Image(systemName: systemImage) }
-                Text(title)
+        Group {
+            if #available(iOS 26, *) {
+                Button {
+                    Haptics.tap()
+                    action()
+                } label: {
+                    HStack(spacing: 8) {
+                        if let systemImage { Image(systemName: systemImage) }
+                        Text(title)
+                    }
+                    .font(GameFont.headline(13))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+                }
+                .buttonStyle(.glass)
+                .tint(color)
+            } else {
+                Button {
+                    Haptics.tap()
+                    action()
+                } label: {
+                    HStack(spacing: 8) {
+                        if let systemImage { Image(systemName: systemImage) }
+                        Text(title)
+                    }
+                    .font(GameFont.headline(13))
+                    .foregroundStyle(color)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Palette.card2.opacity(0.6))
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(color, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(PressableGlassButtonStyle())
             }
-            .font(GameFont.headline(13))
-            .foregroundStyle(color)
-            .frame(maxWidth: .infinity)
-            .frame(height: height)
-            .background(Palette.card2)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(color, lineWidth: 1)
-            )
         }
         .accessibilityAddTraits(.isButton)
     }
@@ -1859,7 +1955,12 @@ private struct LobbyModeCard: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(accent.opacity(0.18))
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .frame(width: 52, height: 52)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(accent.opacity(0.35), lineWidth: 1)
+                        )
                     Image(systemName: icon)
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(accent)
@@ -1881,7 +1982,7 @@ private struct LobbyModeCard: View {
             .padding(16)
             .glassCard(border: Palette.border)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableGlassButtonStyle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title). \(detail)")
         .accessibilityAddTraits(.isButton)
