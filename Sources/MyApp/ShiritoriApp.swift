@@ -431,6 +431,7 @@ final class ToneEngine {
     }
 
     func play(frequency: Double, duration: Double = 0.14, volume: Float = 0.5) {
+        guard AppSettings.audioEnabled else { return }
         guard let buffer = makeBuffer(frequency: frequency, duration: duration, volume: volume) else { return }
         if !engine.isRunning {
             // A missed sound effect is fine. A crash mid-game is not — if
@@ -472,23 +473,30 @@ enum Haptics {
     /// Pitch is fixed high here (this is "the correct answer" cue, not a
     /// graded one) — the graded/"tougher = higher" pitch lives in sliderTick.
     static func accepted() {
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        if AppSettings.hapticsEnabled {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
         ToneEngine.shared.play(frequency: 880, duration: 0.16, volume: 0.55)
     }
 
     static func rejected() {
-        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        if AppSettings.hapticsEnabled {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
         ToneEngine.shared.play(frequency: 220, duration: 0.14, volume: 0.4)
     }
 
     static func warning() {
+        guard AppSettings.hapticsEnabled else { return }
         let gen = UIImpactFeedbackGenerator(style: .heavy)
         gen.impactOccurred(intensity: 1.0)
     }
 
     static func winner() {
-        let gen = UIImpactFeedbackGenerator(style: .heavy)
-        gen.impactOccurred(intensity: 1.0)
+        if AppSettings.hapticsEnabled {
+            let gen = UIImpactFeedbackGenerator(style: .heavy)
+            gen.impactOccurred(intensity: 1.0)
+        }
         ToneEngine.shared.play(frequency: 660, duration: 0.18, volume: 0.6)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
             ToneEngine.shared.play(frequency: 990, duration: 0.3, volume: 0.6)
@@ -498,6 +506,7 @@ enum Haptics {
     /// Base tap for every button — bumped from .light to .medium at full
     /// intensity so navigation reads as a firmer, more deliberate click.
     static func tap() {
+        guard AppSettings.hapticsEnabled else { return }
         let gen = UIImpactFeedbackGenerator(style: .medium)
         gen.impactOccurred(intensity: 1.0)
     }
@@ -509,8 +518,10 @@ enum Haptics {
     /// feels and sounds more intense near the top of its range.
     static func sliderTick(fraction: Double) {
         let f = min(max(fraction, 0), 1)
-        let gen = UIImpactFeedbackGenerator(style: f > 0.66 ? .heavy : (f > 0.33 ? .medium : .light))
-        gen.impactOccurred(intensity: 0.5 + f * 0.5)
+        if AppSettings.hapticsEnabled {
+            let gen = UIImpactFeedbackGenerator(style: f > 0.66 ? .heavy : (f > 0.33 ? .medium : .light))
+            gen.impactOccurred(intensity: 0.5 + f * 0.5)
+        }
         ToneEngine.shared.play(frequency: 260 + f * 620, duration: 0.06, volume: 0.28)
     }
 
@@ -520,11 +531,13 @@ enum Haptics {
         for i in 0..<4 {
             let delay = Double(i) * 0.5
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                let gen = UIImpactFeedbackGenerator(style: .heavy)
-                gen.impactOccurred(intensity: 1.0)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.11) {
-                    let gen2 = UIImpactFeedbackGenerator(style: .heavy)
-                    gen2.impactOccurred(intensity: 0.85)
+                if AppSettings.hapticsEnabled {
+                    let gen = UIImpactFeedbackGenerator(style: .heavy)
+                    gen.impactOccurred(intensity: 1.0)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.11) {
+                        let gen2 = UIImpactFeedbackGenerator(style: .heavy)
+                        gen2.impactOccurred(intensity: 0.85)
+                    }
                 }
                 ToneEngine.shared.playDouble(frequency: 180, gap: 0.11, duration: 0.1, volume: 0.4)
             }
@@ -1914,6 +1927,7 @@ struct LobbyView: View {
     @EnvironmentObject var model: AppModel
     @State private var showNetworkAlert = false
     @State private var pendingNetworkAction: (() -> Void)?
+    @State private var showSettings = false
 
     private func requireSameNetwork(then action: @escaping () -> Void) {
         pendingNetworkAction = action
@@ -1923,14 +1937,30 @@ struct LobbyView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
-                VStack(spacing: 4) {
-                    Text("✦  SHIRITORI  ✦")
-                        .font(GameFont.display(30))
-                        .foregroundStyle(Palette.accent)
-                        .glow(Palette.accent, radius: 18)
-                    Text("chain words · survive · dominate")
-                        .font(GameFont.caption())
-                        .foregroundStyle(Palette.dim)
+                ZStack(alignment: .topTrailing) {
+                    VStack(spacing: 4) {
+                        Text("✦  SHIRITORI  ✦")
+                            .font(GameFont.display(30))
+                            .foregroundStyle(Palette.accent)
+                            .glow(Palette.accent, radius: 18)
+                        Text("chain words · survive · dominate")
+                            .font(GameFont.caption())
+                            .foregroundStyle(Palette.dim)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Button {
+                        Haptics.tap()
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(Palette.dim)
+                            .frame(width: 40, height: 40)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay(Circle().strokeBorder(Palette.border, lineWidth: 1))
+                    }
+                    .accessibilityLabel("Settings")
                 }
                 .padding(.top, 36)
 
@@ -1967,6 +1997,9 @@ struct LobbyView: View {
             Button("Cancel", role: .cancel) { pendingNetworkAction = nil }
         } message: {
             Text("Everyone needs to be on the same Wi-Fi network to find each other — including if you're using a personal hotspot: every phone or PC playing must be connected to that same hotspot, not their own cellular data.")
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
         }
     }
 }
