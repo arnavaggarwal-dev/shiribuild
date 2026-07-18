@@ -1140,6 +1140,11 @@ final class GameEngine: ObservableObject {
     @Published var shakeTrigger = 0
 
     let botPlayerNum: Int?
+    /// Which seat this device actually controls, if any. nil for bot/local
+    /// games (every seat is played on this device); set to the host's seat
+    /// (1) for LAN host games, so feedback for a *remote* player's move isn't
+    /// shown on — or buzzed on — the host's device.
+    let localPlayerNum: Int?
     private let dict: DictionaryStore
     private var timer: Timer?
     private var timerGen = 0
@@ -1149,13 +1154,23 @@ final class GameEngine: ObservableObject {
     /// broadcast; bot/local play just ignore it.
     var onStateChanged: ((GameState, String, Color) -> Void)?
     var onGameOver: ((Int, String) -> Void)?
+    /// Fires once per second while a human turn's clock runs. LANHost relays
+    /// it so clients' countdowns track the authoritative host clock instead
+    /// of sitting frozen at 30.
+    var onTick: ((Int) -> Void)?
+    /// Fires when a submitted word/command is rejected, tagged with the seat
+    /// it was rejected for. LANHost relays it to just that player's connection
+    /// so remote players actually see why their word bounced.
+    var onReject: ((Int, String) -> Void)?
 
     var dangerPoolPercent: Int { 100 - botDifficulty }
 
-    init(dict: DictionaryStore, numPlayers: Int, botPlayerNum: Int?, botDifficulty: Int = 50) {
+    init(dict: DictionaryStore, numPlayers: Int, botPlayerNum: Int?, botDifficulty: Int = 50,
+         localPlayerNum: Int? = nil) {
         self.dict = dict
         self.botPlayerNum = botPlayerNum
         self.botDifficulty = botDifficulty
+        self.localPlayerNum = localPlayerNum
         self.state = .fresh(numPlayers: numPlayers)
     }
 
@@ -1302,6 +1317,13 @@ final class GameEngine: ObservableObject {
     }
 
     private func reject(_ text: String) {
+        let p = state.currentPlayer   // attemptAction guarantees this == the offender
+        onReject?(p, text)
+        // Only flash/buzz/print the rejection on this device if this device
+        // actually controls that seat. In a LAN host game a remote player's
+        // bad word is relayed to *their* screen (via onReject) rather than
+        // showing on the host's.
+        guard localPlayerNum == nil || localPlayerNum == p else { return }
         lastEvent = .rejected(reason: text)
         Haptics.rejected()
         shakeTrigger += 1
@@ -1360,6 +1382,7 @@ final class GameEngine: ObservableObject {
         let gen = timerGen
         timeLeft = 30
         warnedThisTurn = false
+        onTick?(timeLeft)   // reset every client's clock at the top of the turn
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] t in
             guard let self, self.timerGen == gen else { t.invalidate(); return }
             self.tick()
@@ -1379,6 +1402,7 @@ final class GameEngine: ObservableObject {
             return
         }
         timeLeft -= 1
+        onTick?(timeLeft)
     }
 }
 
@@ -1482,7 +1506,9 @@ final class LANHost: ObservableObject {
 
     init(numPlayers: Int, dict: DictionaryStore) {
         self.numPlayers = numPlayers
-        self.engine = GameEngine(dict: dict, numPlayers: numPlayers, botPlayerNum: nil)
+        // The host plays seat 1 on this device; seats 2...N are remote.
+        self.engine = GameEngine(dict: dict, numPlayers: numPlayers, botPlayerNum: nil,
+                                 localPlayerNum: 1)
         engine.onStateChanged = { [weak self] state, text, color in
             self?.broadcast(.stateEnvelope(.stateUpdate, state: state, text: text, color: color))
         }
@@ -1490,6 +1516,16 @@ final class LANHost: ObservableObject {
             guard let self else { return }
             self.broadcast(.stateEnvelope(.gameEnd, state: self.engine.state, text: note, winner: winner))
             self.onGameEnded?(winner, note)
+        }
+        // Relay the authoritative per-second clock so client countdowns move.
+        engine.onTick = { [weak self] timeLeft in
+            self?.broadcast(NetMessage(type: .tick, timeLeft: timeLeft))
+        }
+        // Relay a rejected move to just the player who made it. Seat 1 is the
+        // host and has no entry in `connections`, so a host reject no-ops here
+        // and is shown locally by the engine instead.
+        engine.onReject = { [weak self] player, text in
+            self?.sendToPlayer(player, NetMessage(type: .msg, text: text))
         }
     }
 
@@ -1560,6 +1596,13 @@ final class LANHost: ObservableObject {
         for conn in connections.values {
             conn.send(content: data, completion: .contentProcessed { _ in })
         }
+    }
+
+    /// Send to a single seat's connection. No-op for the host's own seat 1,
+    /// which never has an entry in `connections`.
+    private func sendToPlayer(_ slot: Int, _ msg: NetMessage) {
+        guard let conn = connections[slot] else { return }
+        WireFraming.send(msg, on: conn)
     }
 
     func stopHosting() {
