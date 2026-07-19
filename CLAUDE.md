@@ -133,3 +133,6 @@ hooks that `LANHost` relays.
 
 ### ✅ Done
 - [x] ~~Add `README.md` (merged to `main`, PR #1).~~
+- [x] ~~Add an in-game **Leave** button (was no way to quit/pause once a game
+  started). `QuitButton` with a confirm dialog on every game screen →
+  `model.backToLobby()`. Rule polish intentionally skipped.~~
