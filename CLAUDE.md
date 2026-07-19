@@ -14,10 +14,25 @@ No backend, no accounts, no analytics, no third-party Swift dependencies.
 
 ## Architecture / key files
 
-- `Sources/MyApp/ShiritoriApp.swift` — **everything**: `@main` entry, models
-  (`GameState`, `NetMessage`), the authoritative `GameEngine`, LAN networking
-  (`LANHost` / `LANClient` / `WireFraming`), `AppModel` coordinator, and ~30
-  SwiftUI views. ~2,970 lines.
+Source is split by concern (all one module `MyApp`, so no imports needed between
+these). Both build systems glob `Sources/MyApp/*.swift`, so new files are picked
+up automatically — no `project.yml` / `Package.swift` change needed.
+
+- `Sources/MyApp/ShiritoriApp.swift` — `@main` entry + `RootView` (routing).
+- `Sources/MyApp/Theme.swift` — `Palette`, `Color` hex helpers, `GameFont`.
+- `Sources/MyApp/Models.swift` — `GameState`, `GameEvent`, `NetMessage`, `Route`,
+  `WinnerInfo`.
+- `Sources/MyApp/DictionaryStore.swift` — off-main dictionary load + validation.
+- `Sources/MyApp/BotAI.swift` — `botPickWord`.
+- `Sources/MyApp/AudioHaptics.swift` — `ToneEngine` + `Haptics`.
+- `Sources/MyApp/Effects.swift` — shake `GeometryEffect` + `View.shake`.
+- `Sources/MyApp/Components.swift` — reusable views: glass card, buttons, sliders,
+  score card, word chain, timer, dots, confetti, nebula background.
+- `Sources/MyApp/GameEngine.swift` — authoritative rules engine (Bot/Local/Host).
+- `Sources/MyApp/Networking.swift` — `WireFraming`, `LANHost`, `LANBrowser`, `LANClient`.
+- `Sources/MyApp/AppModel.swift` — top-level coordinator (route + live backend).
+- `Sources/MyApp/Screens.swift` — all full-screen views (lobby, setup, join, waiting,
+  game, winner) + their private helpers.
 - `Sources/MyApp/AppSettings.swift` — persisted haptics/audio prefs + Settings screen.
 - `Sources/MyApp/PrivacyDisclaimer.swift` — one-time first-launch privacy notice.
 - `Sources/MyApp/words_dictionary.json` — ~370k-word English dictionary (looks like
@@ -106,8 +121,9 @@ hooks that `LANHost` relays.
 - [ ] Confirm authorship of the Python originals this is derived from (own work).
 
 ### 🟡 Code quality (non-blocking)
-- [ ] Split the 2,970-line `ShiritoriApp.swift` into Models / Engine / Net / Views /
-  Audio files.
+- [x] ~~Split the 2,970-line `ShiritoriApp.swift` into per-concern files (Theme,
+  Models, DictionaryStore, BotAI, AudioHaptics, Effects, Components, GameEngine,
+  Networking, AppModel, Screens). Pure move, no behavior change.~~
 - [ ] Stop overloading `lastEvent` as a generic "something changed" signal
   (`applyStateDiff` emits a fake `.donated`).
 - [ ] Clarify the bot-turn staleness guard in `scheduleBotTurn`
