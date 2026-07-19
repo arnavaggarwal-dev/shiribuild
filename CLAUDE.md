@@ -92,8 +92,9 @@ hooks that `LANHost` relays.
   turn start) fire `onTick`, `LANHost` broadcasts `.tick`, client applies it.~~
 
 ### 🟠 App Store readiness (blockers)
-- [ ] Add `ITSAppUsesNonExemptEncryption = false` to **both** Info.plists (standard
-  TCP only, no custom crypto).
+- [x] ~~Add `ITSAppUsesNonExemptEncryption = false` to **both** Info.plists (standard
+  TCP only, no custom crypto) — clears the per-build export-compliance prompt in
+  App Store Connect.~~
 - [ ] Build a real **signed** App Store archive path (distribution cert + profile,
   `xcodebuild -exportArchive` with App Store export plist, upload via
   Transporter/Xcode). Current CI is unsigned.
