@@ -299,7 +299,7 @@ struct DatamuseProvider: DictionaryProvider {
 
 // MARK: - The chain
 
-enum DictionaryLookupFailure: Equatable {
+enum DictionaryLookupFailure: Error, Equatable {
     /// At least one provider answered definitively that the word isn't there.
     case notFound
     /// Nothing could be reached at all.
