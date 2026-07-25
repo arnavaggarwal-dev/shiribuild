@@ -11,6 +11,10 @@ import AVFoundation
 final class AppModel: ObservableObject {
     @Published var route: Route = .lobby
 
+    /// Which home tab is showing. Lives here rather than in `HomeView`'s
+    /// `@State` so it survives starting a game and coming back.
+    @Published var homeTab: HomeTab = .bot
+
     // setup screen selections, kept as Double for direct Slider binding
     @Published var botHumanCount: Double = 1
     @Published var botDifficultyChoice: Double = 50
@@ -76,7 +80,7 @@ final class AppModel: ObservableObject {
         e.onGameOver = { [weak self, weak e] winner, note in
             guard let self, let e else { return }
             self.showWinner(from: e.state, winner: winner, botNum: n, botDifficulty: e.botDifficulty,
-                            note: note, myPlayerNum: nil)
+                            note: note, myPlayerNum: nil, mode: .bot)
         }
         engine = e
         route = .botGame
@@ -91,7 +95,7 @@ final class AppModel: ObservableObject {
         e.onGameOver = { [weak self, weak e] winner, note in
             guard let self, let e else { return }
             self.showWinner(from: e.state, winner: winner, botNum: nil, botDifficulty: nil,
-                            note: note, myPlayerNum: nil)
+                            note: note, myPlayerNum: nil, mode: .local)
         }
         engine = e
         route = .localGame
@@ -106,7 +110,7 @@ final class AppModel: ObservableObject {
         host.onGameEnded = { [weak self, weak host] winner, note in
             guard let self, let host else { return }
             self.showWinner(from: host.engine.state, winner: winner, botNum: nil, botDifficulty: nil,
-                            note: note, myPlayerNum: 1)
+                            note: note, myPlayerNum: 1, mode: .host)
         }
         host.startHosting(deviceName: UIDevice.current.name)
         lanHost = host
@@ -115,10 +119,11 @@ final class AppModel: ObservableObject {
 
     // MARK: LAN join
 
-    func startBrowsing() {
-        browser.start()
-        route = .joinList
-    }
+    /// The Join tab drives this from `onAppear`/`onDisappear` — discovery
+    /// runs only while that tab is actually on screen, rather than being
+    /// started by navigating to a route.
+    func startBrowsing() { browser.start() }
+    func stopBrowsing() { browser.stop() }
 
     func join(_ result: NWBrowser.Result) {
         let client = LANClient()
@@ -142,13 +147,33 @@ final class AppModel: ObservableObject {
     func clientGameEnded() {
         guard let c = lanClient else { return }
         showWinner(from: c.state, winner: c.winner ?? 0, botNum: nil, botDifficulty: nil,
-                  note: c.message, myPlayerNum: c.myPlayerNum)
+                  note: c.message, myPlayerNum: c.myPlayerNum, mode: .client)
     }
 
     // MARK: winner screen assembly
 
+    /// Every finished game — bot, local, hosted and joined alike — funnels
+    /// through here, which makes it the one place the history log needs to
+    /// hook. `mode` is passed in explicitly rather than inferred from
+    /// `botNum`/`myPlayerNum`, since those can't distinguish a local
+    /// pass-and-play game from a joined LAN one.
     private func showWinner(from state: GameState, winner: Int, botNum: Int?, botDifficulty: Int?,
-                             note: String, myPlayerNum: Int?) {
+                             note: String, myPlayerNum: Int?, mode: GameMode) {
+        if AppSettings.loggingEnabled {
+            GameLogStore.shared.record(GameLogEntry(
+                date: Date(),
+                mode: mode,
+                numPlayers: state.numPlayers,
+                winner: winner,
+                winnerWasBot: botNum != nil && winner == botNum,
+                myPlayerNum: myPlayerNum,
+                scores: state.scores,
+                words: state.wordList,
+                botDifficulty: botDifficulty,
+                note: note
+            ))
+        }
+
         let info = WinnerInfo(
             winner: winner,
             isBot: botNum != nil && winner == botNum,

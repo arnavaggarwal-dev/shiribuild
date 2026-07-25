@@ -8,7 +8,11 @@ import SwiftUI
 /// across launches without persisting across reinstalls, which is exactly
 /// "show once per install" — the practical equivalent of what was asked.)
 enum PrivacyDisclaimer {
-    private static let seenKey = "com.arnavaggarwal.shiritori.hasSeenPrivacyDisclaimer.v1"
+    /// Bumped to .v2 when dictionary lookups were added — the notice used to
+    /// say nothing ever leaves the device, which is no longer the whole
+    /// truth. Existing installs need to see the corrected wording, so the
+    /// old key is deliberately abandoned rather than reused.
+    private static let seenKey = "com.arnavaggarwal.shiritori.hasSeenPrivacyDisclaimer.v2"
 
     static var hasBeenSeen: Bool {
         UserDefaults.standard.bool(forKey: seenKey)
@@ -31,11 +35,13 @@ struct PrivacyDisclaimerView: View {
 
                 VStack(alignment: .leading, spacing: 14) {
                     disclaimerRow(icon: "server.rack",
-                        text: "There is no server. This app has no backend, no account system, and nothing you do here is sent to us — because there's no \"us\" to send it to.")
+                        text: "There is no server. This app has no backend and no account system, and nothing you do here is sent to us — because there's no \"us\" to send it to.")
                     disclaimerRow(icon: "wifi",
                         text: "Multiplayer works by connecting directly, phone-to-phone or phone-to-PC, over your local Wi-Fi network. That connection never leaves your network.")
+                    disclaimerRow(icon: "book.closed",
+                        text: "One exception: when you ask for a starred word's meaning, that single word is sent to a free third-party dictionary service to fetch it. Nothing else goes with it, and you can switch this off in Settings.")
                     disclaimerRow(icon: "eye.slash",
-                        text: "No analytics, no tracking, no ads. Nothing is collected — there's simply nowhere for it to go.")
+                        text: "No analytics, no tracking, no ads. Your games, scores and starred words are stored only on this device.")
                 }
                 .padding(20)
                 .glassCard()

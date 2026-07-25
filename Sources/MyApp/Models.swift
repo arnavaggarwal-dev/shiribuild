@@ -121,11 +121,9 @@ struct NetMessage: Codable {
 /// Screens the root view can be on. Not a NavigationStack because the app
 /// wants full control over cross-fades against the nebula background.
 enum Route: Equatable {
+    /// The tabbed home screen. Which tab is showing lives on `AppModel`, not
+    /// here — the four setup screens are tabs now rather than routes.
     case lobby
-    case botSetup
-    case localSetup
-    case hostSetup
-    case joinList
     case waitingHost(total: Int)
     case waitingClient
     case botGame

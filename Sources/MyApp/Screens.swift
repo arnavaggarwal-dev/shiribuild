@@ -40,137 +40,6 @@ struct LoadingView: View {
     }
 }
 
-// MARK: - Lobby
-
-struct LobbyView: View {
-    @EnvironmentObject var model: AppModel
-    @State private var showNetworkAlert = false
-    @State private var pendingNetworkAction: (() -> Void)?
-    @State private var showSettings = false
-
-    private func requireSameNetwork(then action: @escaping () -> Void) {
-        pendingNetworkAction = action
-        showNetworkAlert = true
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 22) {
-                ZStack(alignment: .topTrailing) {
-                    VStack(spacing: 4) {
-                        Text("✦  SHIRITORI  ✦")
-                            .font(GameFont.display(30))
-                            .foregroundStyle(Palette.accent)
-                            .glow(Palette.accent, radius: 18)
-                        Text("chain words · survive · dominate")
-                            .font(GameFont.caption())
-                            .foregroundStyle(Palette.dim)
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    Button {
-                        Haptics.tap()
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(Palette.dim)
-                            .frame(width: 40, height: 40)
-                            .background(.ultraThinMaterial, in: Circle())
-                            .overlay(Circle().strokeBorder(Palette.border, lineWidth: 1))
-                    }
-                    .accessibilityLabel("Settings")
-                }
-                .padding(.top, 36)
-
-                LobbyModeCard(
-                    title: "Bot Mode", subtitle: "1-7 players + AI",
-                    detail: "Play with friends on this device, plus an AI opponent with adjustable difficulty.",
-                    icon: "cpu", accent: Palette.borderActive
-                ) { model.route = .botSetup }
-
-                LobbyModeCard(
-                    title: "Local Play", subtitle: "2-8 players, same device",
-                    detail: "Pass the phone or tablet around the table — everyone shares this screen.",
-                    icon: "person.2.fill", accent: Palette.accent
-                ) { model.route = .localSetup }
-
-                LobbyModeCard(
-                    title: "Host a Game", subtitle: "LAN · up to 8 players",
-                    detail: "Start a game nearby players can discover and join automatically — no IP address needed.",
-                    icon: "antenna.radiowaves.left.and.right", accent: Palette.glow
-                ) { requireSameNetwork { model.route = .hostSetup } }
-
-                LobbyModeCard(
-                    title: "Join a Game", subtitle: "LAN",
-                    detail: "Find a game already being hosted on this Wi-Fi network.",
-                    icon: "wifi", accent: Palette.green
-                ) { requireSameNetwork { model.startBrowsing() } }
-
-                Spacer(minLength: 20)
-            }
-            .padding(.horizontal, 22)
-        }
-        .alert("Same Wi-Fi Required", isPresented: $showNetworkAlert) {
-            Button("Got it") { pendingNetworkAction?(); pendingNetworkAction = nil }
-            Button("Cancel", role: .cancel) { pendingNetworkAction = nil }
-        } message: {
-            Text("Everyone needs to be on the same Wi-Fi network to find each other — including if you're using a personal hotspot: every phone or PC playing must be connected to that same hotspot, not their own cellular data.")
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
-        }
-    }
-}
-
-private struct LobbyModeCard: View {
-    var title: String
-    var subtitle: String
-    var detail: String
-    var icon: String
-    var accent: Color
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: { Haptics.tap(); action() }) {
-            HStack(spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(accent.opacity(0.18))
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .frame(width: 52, height: 52)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(accent.opacity(0.35), lineWidth: 1)
-                        )
-                    Image(systemName: icon)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(accent)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(title).font(GameFont.headline(16)).foregroundStyle(Palette.text)
-                        Spacer()
-                        Text(subtitle).font(GameFont.caption(10)).foregroundStyle(Palette.dim)
-                    }
-                    Text(detail).font(GameFont.body(12)).foregroundStyle(Palette.dim)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Palette.dim)
-            }
-            .padding(16)
-            .glassCard(border: Palette.border)
-        }
-        .buttonStyle(PressableGlassButtonStyle())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title). \(detail)")
-        .accessibilityAddTraits(.isButton)
-    }
-}
-
 // MARK: - Setup Screens
 
 private func difficultyLabel(_ d: Int) -> String {
@@ -196,7 +65,9 @@ private struct SetupScaffold<Content: View>: View {
     var startTitle: String
     var startEnabled: Bool = true
     var onStart: () -> Void
-    var onBack: () -> Void
+    /// nil when the screen is a home tab — there's nowhere to go "back" to,
+    /// so the button is omitted rather than shown as a dead end.
+    var onBack: (() -> Void)?
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -205,14 +76,16 @@ private struct SetupScaffold<Content: View>: View {
                 Text(title)
                     .font(GameFont.title(24))
                     .foregroundStyle(Palette.accent)
-                    .padding(.top, 40)
+                    .padding(.top, 14)
 
                 VStack(spacing: 22) { content }
                     .padding(20)
                     .glassCard()
 
                 SolidButton(title: startTitle, isEnabled: startEnabled, action: onStart)
-                GhostButton(title: "Back", systemImage: "chevron.left", action: onBack)
+                if let onBack = onBack {
+                    GhostButton(title: "Back", systemImage: "chevron.left", action: onBack)
+                }
                 Spacer(minLength: 20)
             }
             .padding(.horizontal, 24)
@@ -227,8 +100,7 @@ struct BotSetupView: View {
         SetupScaffold(
             title: "Bot Mode",
             startTitle: "Start Game",
-            onStart: { model.startBotGame() },
-            onBack: { model.route = .lobby }
+            onStart: { model.startBotGame() }
         ) {
             LabeledSlider(label: "Human players", valueText: "\(Int(model.botHumanCount))",
                          value: $model.botHumanCount, range: 1...7, step: 1)
@@ -262,8 +134,7 @@ struct LocalSetupView: View {
         SetupScaffold(
             title: "Local Game",
             startTitle: "Start Game",
-            onStart: { model.startLocalGame() },
-            onBack: { model.route = .lobby }
+            onStart: { model.startLocalGame() }
         ) {
             LabeledSlider(label: "Number of players", valueText: "\(Int(model.localPlayerCount))",
                          value: $model.localPlayerCount, range: 2...8, step: 1)
@@ -281,14 +152,15 @@ struct HostSetupView: View {
         SetupScaffold(
             title: "Host a Game",
             startTitle: "Create Lobby",
-            onStart: { model.createLobby() },
-            onBack: { model.route = .lobby }
+            onStart: { model.createLobby() }
         ) {
             LabeledSlider(label: "Number of players", valueText: "\(Int(model.hostPlayerCount))",
                          value: $model.hostPlayerCount, range: 2...8, step: 1)
             Text("Nearby players will see your game appear automatically — nothing to type.")
                 .font(GameFont.caption()).foregroundStyle(Palette.dim)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            WiFiNoticeCard()
         }
     }
 }
@@ -304,7 +176,9 @@ struct JoinListView: View {
         ScrollView {
             VStack(spacing: 20) {
                 Text("Join a Game").font(GameFont.title(24)).foregroundStyle(Palette.accent)
-                    .padding(.top, 40)
+                    .padding(.top, 14)
+
+                WiFiNoticeCard()
 
                 if browser.hosts.isEmpty {
                     VStack(spacing: 14) {
@@ -376,10 +250,6 @@ struct JoinListView: View {
                 .padding(16)
                 .glassCard()
 
-                GhostButton(title: "Back", systemImage: "chevron.left") {
-                    browser.stop()
-                    model.route = .lobby
-                }
                 Spacer(minLength: 20)
             }
             .padding(.horizontal, 24)
@@ -571,12 +441,16 @@ struct GameHeaderCard: View {
                     } else {
                         Text(turnLabel).font(GameFont.caption()).foregroundStyle(Palette.dim)
                     }
-                    Text(currentWord)
-                        .font(GameFont.display(32))
-                        .foregroundStyle(Palette.glow)
-                        .glow(Palette.glow, radius: 12, opacity: 0.35)
-                        .contentTransition(.numericText())
-                        .accessibilityLabel("Current word: \(currentWord)")
+                    HStack(spacing: 10) {
+                        Text(currentWord)
+                            .font(GameFont.display(32))
+                            .foregroundStyle(Palette.glow)
+                            .glow(Palette.glow, radius: 12, opacity: 0.35)
+                            .contentTransition(.numericText())
+                            .accessibilityLabel("Current word: \(currentWord)")
+
+                        StarToggleButton(word: currentWord, size: 20)
+                    }
                 }
                 Spacer()
                 HStack(spacing: 8) {

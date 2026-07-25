@@ -12,6 +12,12 @@ and LAN multiplayer (Bonjour discovery + fixed TCP port 55731, PC join by IP).
 
 No backend, no accounts, no analytics, no third-party Swift dependencies.
 
+**One caveat on "offline":** looking up a starred word's definition sends that
+single word to a free third-party dictionary service over HTTPS. It's the only
+outbound internet call in the app, it's user-initiated, and it can be switched
+off in Settings. Everything else — games, scores, starred words — stays on the
+device.
+
 ## Architecture / key files
 
 Source is split by concern (all one module `MyApp`, so no imports needed between
@@ -31,9 +37,18 @@ up automatically — no `project.yml` / `Package.swift` change needed.
 - `Sources/MyApp/GameEngine.swift` — authoritative rules engine (Bot/Local/Host).
 - `Sources/MyApp/Networking.swift` — `WireFraming`, `LANHost`, `LANBrowser`, `LANClient`.
 - `Sources/MyApp/AppModel.swift` — top-level coordinator (route + live backend).
-- `Sources/MyApp/Screens.swift` — all full-screen views (lobby, setup, join, waiting,
+- `Sources/MyApp/Screens.swift` — all full-screen views (setup, join, waiting,
   game, winner) + their private helpers.
-- `Sources/MyApp/AppSettings.swift` — persisted haptics/audio prefs + Settings screen.
+- `Sources/MyApp/HomeTabs.swift` — `HomeTab`, `HomeView` (the tabbed home) and the
+  custom tab bar, plus `WiFiNoticeCard` / `EmptyStateCard`.
+- `Sources/MyApp/Stores.swift` — `GameLogEntry`, `StarredWord`, `WordFolder` and
+  their JSON-file-backed `GameLogStore` / `StarredStore`.
+- `Sources/MyApp/LogScreens.swift` — game history list + detail, and the shared
+  `StarToggleButton`.
+- `Sources/MyApp/StarredScreens.swift` — starred words, folder assignment, definition sheet.
+- `Sources/MyApp/DictionaryAPI.swift` — `CachedDefinition` + the 4-provider lookup chain.
+- `Sources/MyApp/ColorEditor.swift` — RGB/HSV picker for the two themeable colours.
+- `Sources/MyApp/AppSettings.swift` — persisted prefs + Settings screen.
 - `Sources/MyApp/PrivacyDisclaimer.swift` — one-time first-launch privacy notice.
 - `Sources/MyApp/words_dictionary.json` — ~370k-word English dictionary (looks like
   the public-domain dwyl/english-words list). Loaded off-main at launch.
@@ -42,6 +57,14 @@ up automatically — no `project.yml` / `Package.swift` change needed.
 
 ### How the pieces talk
 - `GameEngine` is the single source of truth for Bot, Local, and Host games.
+- `AppModel.showWinner(...)` is the one funnel every finished game passes through
+  (bot / local / host / client), so it's where history logging hooks in.
+- `Palette` members for the themeable colours are `static var` computed properties
+  reading `ThemeStore.shared`, which is what lets a recolor apply without touching
+  any of the ~189 `Palette.x` call sites. `RootView` hangs `.id(theme.revision)`
+  off the store to force the repaint, since static properties publish nothing.
+- Home is a **hand-rolled** tab bar, not a `TabView` — SwiftUI caps a `TabView`
+  at 5 visible tabs on iPhone and shunts the rest into a system "More" list.
 - `LANHost` wraps one `GameEngine` and broadcasts via `engine.onStateChanged` /
   `engine.onGameOver`. Remote clients' moves arrive as `.action` messages.
 - `LANClient` runs no rules — it mirrors host state and forwards this player's input.
@@ -98,7 +121,9 @@ hooks that `LANHost` relays.
 - [ ] Build a real **signed** App Store archive path (distribution cert + profile,
   `xcodebuild -exportArchive` with App Store export plist, upload via
   Transporter/Xcode). Current CI is unsigned.
-- [ ] App Store Connect: privacy nutrition label → **Data Not Collected**.
+- [ ] App Store Connect: privacy nutrition label → **Data Not Collected**. Note the
+  dictionary lookup now sends a single word to a third-party service; nothing is
+  collected *by us*, but the third-party call should be disclosed.
 - [ ] App Store Connect: host a short **privacy policy URL** (reuse the
   `PrivacyDisclaimer` text) — required even when nothing is collected.
 - [ ] Add **App Review note**: "Multiplayer needs 2 devices on the same Wi-Fi; Bot
@@ -136,6 +161,13 @@ hooks that `LANHost` relays.
 - [x] ~~Manual IP field: use `.numbersAndPunctuation` instead of `.decimalPad`.~~
 
 ### ✅ Done
+- [x] ~~Game history log + starred words. Home became a 6-tab screen (the four
+  modes + Logs + Starred). Finished games are recorded at `AppModel.showWinner`;
+  words can be starred from the in-game header banner or from any past game's
+  word list; starred words support multi-folder tagging, deletion, and an
+  online definition + example sentence. Settings gained logging on/off, a
+  warned "delete all game logs", an online-lookup opt-out, and RGB/HSV editors
+  for the accent and background colours.~~
 - [x] ~~Add `README.md` (merged to `main`, PR #1).~~
 - [x] ~~Add an in-game **Leave** button (was no way to quit/pause once a game
   started). `QuitButton` with a confirm dialog on every game screen →
