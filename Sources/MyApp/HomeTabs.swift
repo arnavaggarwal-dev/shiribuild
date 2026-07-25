@@ -126,7 +126,7 @@ private struct HomeTabBar: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(tab.label)
-                .accessibilityAddTraits(selection == tab ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAddTraits(traits(for: tab))
             }
         }
         .padding(.horizontal, 4)
@@ -135,6 +135,12 @@ private struct HomeTabBar: View {
         .overlay(alignment: .top) {
             Rectangle().fill(Palette.border).frame(height: 1)
         }
+    }
+
+    private func traits(for tab: HomeTab) -> AccessibilityTraits {
+        var traits: AccessibilityTraits = .isButton
+        if selection == tab { traits.insert(.isSelected) }
+        return traits
     }
 }
 

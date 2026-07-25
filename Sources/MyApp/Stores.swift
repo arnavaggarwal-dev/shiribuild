@@ -280,10 +280,11 @@ final class StarredStore: ObservableObject {
         persistWords()
     }
 
-    /// nil folder == the "All" view.
+    /// nil folder == the "All" view. `self.` is explicit because this method
+    /// shares its base name with the `words` property.
     func words(in folderID: UUID?) -> [StarredWord] {
-        guard let folderID else { return words }
-        return words.filter { $0.folderIDs.contains(folderID) }
+        guard let folderID = folderID else { return self.words }
+        return self.words.filter { $0.folderIDs.contains(folderID) }
     }
 
     // MARK: definitions

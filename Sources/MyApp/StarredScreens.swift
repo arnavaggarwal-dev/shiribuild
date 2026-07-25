@@ -319,7 +319,7 @@ struct WordDefinitionView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         header
 
-                        if let definition {
+                        if let definition = definition {
                             definitionBody(definition)
                         } else if isLoading {
                             VStack(spacing: 12) {
@@ -331,7 +331,7 @@ struct WordDefinitionView: View {
                             .frame(maxWidth: .infinity)
                             .padding(30)
                             .glassCard()
-                        } else if let failure {
+                        } else if let failure = failure {
                             failureCard(failure)
                         } else if !AppSettings.definitionLookupEnabled {
                             EmptyStateCard(
