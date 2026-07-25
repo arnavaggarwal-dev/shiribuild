@@ -132,5 +132,13 @@ final class DictionaryStore: ObservableObject {
         loadFailed = true
         isLoaded = true
     }
+
+    /// Test seam: synchronously populate the store with a fixed word list,
+    /// bypassing the async bundle load.
+    func loadForTesting(_ words: [String]) {
+        wordSet = Set(words)
+        byFirstLetter = Dictionary(grouping: words, by: { $0.first! })
+        isLoaded = true
+    }
 }
 

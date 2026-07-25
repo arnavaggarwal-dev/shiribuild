@@ -319,9 +319,9 @@ final class LANClient: ObservableObject {
             let removed = old.activePlayers.first { !state.activePlayers.contains($0) } ?? old.currentPlayer
             lastEvent = .eliminated(player: removed, isBot: false)
             Haptics.rejected()
-        } else {
-            lastEvent = .donated(from: old.currentPlayer, to: 0, amount: 0)
         }
+        // Other diffs (donations, skips) only change scores/turn, which the
+        // state re-assignment above already surfaces — no flash-worthy event.
     }
 
     private func handleClose() {
