@@ -125,15 +125,23 @@ hooks that `LANHost` relays.
 - [x] ~~Split the 2,970-line `ShiritoriApp.swift` into per-concern files (Theme,
   Models, DictionaryStore, BotAI, AudioHaptics, Effects, Components, GameEngine,
   Networking, AppModel, Screens). Pure move, no behavior change.~~
-- [ ] Stop overloading `lastEvent` as a generic "something changed" signal
-  (`applyStateDiff` emits a fake `.donated`).
+- [x] ~~Stop overloading `lastEvent` as a generic "something changed" signal
+  (`applyStateDiff` emits a fake `.donated`). Fixed: the catch-all branch no
+  longer sets `lastEvent` at all — nothing read it (GameEventFlash already
+  treated `.donated` as a no-op), so the state re-assignment above it is
+  enough.~~
 - [ ] Clarify the bot-turn staleness guard in `scheduleBotTurn`
   (`timerGen == gen || botPlayerNum != nil` is effectively always-true for bots).
-- [ ] Randomize the opening word (every game currently starts with "apple").
-- [ ] Manual IP field: use `.numbersAndPunctuation` instead of `.decimalPad`.
+- [x] ~~Randomize the opening word (every game currently starts with "apple").~~
+- [x] ~~Manual IP field: use `.numbersAndPunctuation` instead of `.decimalPad`.~~
 
 ### ✅ Done
 - [x] ~~Add `README.md` (merged to `main`, PR #1).~~
 - [x] ~~Add an in-game **Leave** button (was no way to quit/pause once a game
   started). `QuitButton` with a confirm dialog on every game screen →
   `model.backToLobby()`. Rule polish intentionally skipped.~~
+- [x] ~~Add a `GameEngineTests`/`BotAITests` unit test suite (new `MyAppTests`
+  target in `Package.swift`/`project.yml`) covering word accept/reject,
+  duplicate/forbidden-letter handling, `/skip`, `/donate`, game-over, and a
+  bot turn end-to-end. `DictionaryStore.loadForTesting(_:)` is the seam that
+  makes this deterministic (no async 370k-word bundle load).~~

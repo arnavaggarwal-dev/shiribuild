@@ -21,6 +21,13 @@ let package = Package(
                 // the language mode to 5 while keeping the 6.0 toolchain.
                 .swiftLanguageMode(.v5)
             ]
+        ),
+        .testTarget(
+            name: "MyAppTests",
+            dependencies: ["MyApp"],
+            swiftSettings: [
+                .swiftLanguageMode(.v5)
+            ]
         )
     ]
 )

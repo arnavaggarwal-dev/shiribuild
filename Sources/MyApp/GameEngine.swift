@@ -53,7 +53,7 @@ final class GameEngine: ObservableObject {
         self.botPlayerNum = botPlayerNum
         self.botDifficulty = botDifficulty
         self.localPlayerNum = localPlayerNum
-        self.state = .fresh(numPlayers: numPlayers)
+        self.state = .fresh(numPlayers: numPlayers, dict: dict)
     }
 
     func start() {

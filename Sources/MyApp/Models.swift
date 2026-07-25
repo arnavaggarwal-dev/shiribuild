@@ -21,9 +21,10 @@ struct GameState: Codable, Equatable {
     static let empty = GameState(currentPlayer: 1, previousWord: "apple", wordList: ["apple"],
                                   scores: [0], activePlayers: [1], forbidden: "z", numPlayers: 1)
 
-    static func fresh(numPlayers: Int) -> GameState {
+    static func fresh(numPlayers: Int, dict: DictionaryStore) -> GameState {
         let letter = Character(UnicodeScalar(UInt8.random(in: 97...122)))
-        return GameState(currentPlayer: 1, previousWord: "apple", wordList: ["apple"],
+        let start = dict.randomStartWord(avoidingLastLetter: letter) ?? "apple"
+        return GameState(currentPlayer: 1, previousWord: start, wordList: [start],
                           scores: Array(repeating: 0, count: numPlayers),
                           activePlayers: Array(1...numPlayers),
                           forbidden: String(letter), numPlayers: numPlayers)

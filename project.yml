@@ -38,3 +38,22 @@ targets:
         # the SwiftPM-only Bundle.module accessor.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "XCODEGEN_BUILD"
         TARGETED_DEVICE_FAMILY: "1,2"
+
+  MyAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Tests/MyAppTests
+    dependencies:
+      - target: MyApp
+
+schemes:
+  MyApp:
+    build:
+      targets:
+        MyApp: all
+        MyAppTests: [test]
+    test:
+      targets:
+        - MyAppTests

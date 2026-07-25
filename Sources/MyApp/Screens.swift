@@ -353,7 +353,7 @@ struct JoinListView: View {
                     HStack(spacing: 10) {
                         TextField("192.168.1.42", text: $manualIP)
                             .font(GameFont.body(14)).foregroundStyle(Palette.text)
-                            .keyboardType(.decimalPad)
+                            .keyboardType(.numbersAndPunctuation)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                             .padding(10)
