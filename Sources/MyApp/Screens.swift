@@ -83,7 +83,7 @@ private struct SetupScaffold<Content: View>: View {
                     .glassCard()
 
                 SolidButton(title: startTitle, isEnabled: startEnabled, action: onStart)
-                if let onBack {
+                if let onBack = onBack {
                     GhostButton(title: "Back", systemImage: "chevron.left", action: onBack)
                 }
                 Spacer(minLength: 20)
@@ -250,10 +250,6 @@ struct JoinListView: View {
                 .padding(16)
                 .glassCard()
 
-                GhostButton(title: "Back", systemImage: "chevron.left") {
-                    browser.stop()
-                    model.route = .lobby
-                }
                 Spacer(minLength: 20)
             }
             .padding(.horizontal, 24)

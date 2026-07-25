@@ -446,7 +446,7 @@ struct WordDefinitionView: View {
                 .multilineTextAlignment(.center)
             if failure == .unreachable {
                 GhostButton(title: "Retry", systemImage: "arrow.clockwise") {
-                    Task { await load(force: true) }
+                    Task { await load() }
                 }
             }
         }
@@ -462,10 +462,10 @@ struct WordDefinitionView: View {
             definition = cached
             return
         }
-        await load(force: false)
+        await load()
     }
 
-    private func load(force: Bool) async {
+    private func load() async {
         guard AppSettings.definitionLookupEnabled else { return }
         guard !isLoading else { return }
         isLoading = true

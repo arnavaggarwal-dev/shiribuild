@@ -149,11 +149,11 @@ final class GameLogStore: ObservableObject {
 
     func deleteAll() {
         entries = []
-        if let fileName { AppFiles.delete(fileName) }
+        if let fileName = fileName { AppFiles.delete(fileName) }
     }
 
     private func persist() {
-        guard let fileName else { return }
+        guard let fileName = fileName else { return }
         let snapshot = entries
         storeWriteQueue.async { AppFiles.save(snapshot, to: fileName) }
     }
@@ -297,13 +297,13 @@ final class StarredStore: ObservableObject {
     // MARK: persistence
 
     private func persistWords() {
-        guard let wordsFile else { return }
+        guard let wordsFile = wordsFile else { return }
         let snapshot = words
         storeWriteQueue.async { AppFiles.save(snapshot, to: wordsFile) }
     }
 
     private func persistFolders() {
-        guard let foldersFile else { return }
+        guard let foldersFile = foldersFile else { return }
         let snapshot = folders
         storeWriteQueue.async { AppFiles.save(snapshot, to: foldersFile) }
     }
