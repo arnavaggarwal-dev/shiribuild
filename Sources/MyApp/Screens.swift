@@ -796,7 +796,44 @@ struct CommandsCard: View {
 
 // MARK: - Game Screen (bot / local / LAN host)
 
+/// Small "leave the game" control shown at the top of every in-game screen.
+/// Confirms first, since backToLobby() abandons the current game (and, for a
+/// host, tears down the LAN lobby for everyone).
+struct QuitButton: View {
+    var isClient: Bool = false
+    var onQuit: () -> Void
+    @State private var showConfirm = false
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            showConfirm = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "xmark")
+                Text("Leave")
+            }
+            .font(GameFont.headline(13))
+            .foregroundStyle(Palette.dim)
+            .padding(.horizontal, 14)
+            .frame(height: 38)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 1))
+        }
+        .accessibilityLabel("Leave game")
+        .confirmationDialog("Leave this game?", isPresented: $showConfirm, titleVisibility: .visible) {
+            Button("Leave game", role: .destructive) { Haptics.tap(); onQuit() }
+            Button("Keep playing", role: .cancel) { }
+        } message: {
+            Text(isClient
+                 ? "You'll disconnect and return to the lobby."
+                 : "This ends the current game and returns to the lobby.")
+        }
+    }
+}
+
 struct GameView: View {
+    @EnvironmentObject var model: AppModel
     @ObservedObject var engine: GameEngine
     var myPlayerNum: Int?
     @State private var text = ""
@@ -818,6 +855,11 @@ struct GameView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
+                HStack {
+                    QuitButton { model.backToLobby() }
+                    Spacer()
+                }
+
                 GameHeaderCard(currentWord: engine.state.previousWord, turnLabel: turnLabel,
                               isBotThinking: engine.isBotThinking, forbiddenLetter: engine.state.forbidden,
                               timeLeft: engine.timeLeft)
@@ -899,6 +941,11 @@ struct ClientGameView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
+                HStack {
+                    QuitButton(isClient: true) { model.backToLobby() }
+                    Spacer()
+                }
+
                 GameHeaderCard(currentWord: client.state.previousWord, turnLabel: turnLabel,
                               isBotThinking: false, forbiddenLetter: client.state.forbidden,
                               timeLeft: client.timeLeft)

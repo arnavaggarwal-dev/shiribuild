@@ -92,8 +92,9 @@ hooks that `LANHost` relays.
   turn start) fire `onTick`, `LANHost` broadcasts `.tick`, client applies it.~~
 
 ### 🟠 App Store readiness (blockers)
-- [ ] Add `ITSAppUsesNonExemptEncryption = false` to **both** Info.plists (standard
-  TCP only, no custom crypto).
+- [x] ~~Add `ITSAppUsesNonExemptEncryption = false` to **both** Info.plists (standard
+  TCP only, no custom crypto) — clears the per-build export-compliance prompt in
+  App Store Connect.~~
 - [ ] Build a real **signed** App Store archive path (distribution cert + profile,
   `xcodebuild -exportArchive` with App Store export plist, upload via
   Transporter/Xcode). Current CI is unsigned.
@@ -136,6 +137,9 @@ hooks that `LANHost` relays.
 
 ### ✅ Done
 - [x] ~~Add `README.md` (merged to `main`, PR #1).~~
+- [x] ~~Add an in-game **Leave** button (was no way to quit/pause once a game
+  started). `QuitButton` with a confirm dialog on every game screen →
+  `model.backToLobby()`. Rule polish intentionally skipped.~~
 - [x] ~~Add a `GameEngineTests`/`BotAITests` unit test suite (new `MyAppTests`
   target in `Package.swift`/`project.yml`) covering word accept/reject,
   duplicate/forbidden-letter handling, `/skip`, `/donate`, game-over, and a
