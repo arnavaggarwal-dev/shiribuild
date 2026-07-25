@@ -110,6 +110,22 @@ final class DictionaryStore: ObservableObject {
         wordSet.isEmpty || wordSet.contains(word)
     }
 
+    /// A random opening word for a fresh game, whose last letter isn't the
+    /// forbidden one (an opening word landing on it would strand the first
+    /// player before they even get a turn). Falls back to nil if the
+    /// dictionary hasn't loaded (or failed to), so callers can supply their
+    /// own default.
+    func randomStartWord(avoidingLastLetter forbidden: Character) -> String? {
+        guard !byFirstLetter.isEmpty else { return nil }
+        for _ in 0..<10 {
+            guard let letter = byFirstLetter.keys.randomElement(),
+                  let word = byFirstLetter[letter]?.randomElement(),
+                  word.last != forbidden else { continue }
+            return word
+        }
+        return nil
+    }
+
     /// Bypass a stuck/failed load and let the user play without validation
     /// (empty wordSet ⇒ isValid accepts anything).
     func markReadyUnvalidated() {
