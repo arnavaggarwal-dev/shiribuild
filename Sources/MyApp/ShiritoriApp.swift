@@ -30,6 +30,11 @@ import AVFoundation
 
 struct RootView: View {
     @StateObject private var model = AppModel()
+    /// `Palette` reads its themeable colors straight off this store's
+    /// singleton. Static properties publish nothing on their own, so observing
+    /// the store here and keying the content off `revision` is what actually
+    /// makes a color change repaint the app.
+    @StateObject private var theme = ThemeStore.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var showPrivacyDisclaimer = !PrivacyDisclaimer.hasBeenSeen
 
@@ -47,6 +52,7 @@ struct RootView: View {
                 PrivacyDisclaimerView { showPrivacyDisclaimer = false }
             }
         }
+        .id(theme.revision)
         .environmentObject(model)
         .preferredColorScheme(.dark)
         .onAppear { model.loadDictionary() }
@@ -56,11 +62,7 @@ struct RootView: View {
     @ViewBuilder
     private var routedContent: some View {
         switch model.route {
-        case .lobby: LobbyView()
-        case .botSetup: BotSetupView()
-        case .localSetup: LocalSetupView()
-        case .hostSetup: HostSetupView()
-        case .joinList: JoinListView(browser: model.browser)
+        case .lobby: HomeView()
         case .waitingHost(let total):
             if let host = model.lanHost { HostWaitingRoomView(host: host, total: total) }
         case .waitingClient:
