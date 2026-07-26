@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Starred words
 
 struct StarredView: View {
+    @EnvironmentObject var model: AppModel
     @ObservedObject private var store = StarredStore.shared
 
     /// nil == the "All" chip.
@@ -38,7 +39,7 @@ struct StarredView: View {
                 Text("Starred Words")
                     .font(GameFont.title(24))
                     .foregroundStyle(Palette.accent)
-                    .padding(.top, 14)
+                    .padding(.top, 40)
 
                 if store.words.isEmpty {
                     EmptyStateCard(
@@ -62,6 +63,9 @@ struct StarredView: View {
                     }
                 }
 
+                GhostButton(title: "Back", systemImage: "chevron.left") {
+                    model.route = .lobby
+                }
                 Spacer(minLength: 20)
             }
             .padding(.horizontal, 20)

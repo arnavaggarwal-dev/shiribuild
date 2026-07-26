@@ -11,10 +11,6 @@ import AVFoundation
 final class AppModel: ObservableObject {
     @Published var route: Route = .lobby
 
-    /// Which home tab is showing. Lives here rather than in `HomeView`'s
-    /// `@State` so it survives starting a game and coming back.
-    @Published var homeTab: HomeTab = .bot
-
     // setup screen selections, kept as Double for direct Slider binding
     @Published var botHumanCount: Double = 1
     @Published var botDifficultyChoice: Double = 50
@@ -119,11 +115,10 @@ final class AppModel: ObservableObject {
 
     // MARK: LAN join
 
-    /// The Join tab drives this from `onAppear`/`onDisappear` — discovery
-    /// runs only while that tab is actually on screen, rather than being
-    /// started by navigating to a route.
-    func startBrowsing() { browser.start() }
-    func stopBrowsing() { browser.stop() }
+    func startBrowsing() {
+        browser.start()
+        route = .joinList
+    }
 
     func join(_ result: NWBrowser.Result) {
         let client = LANClient()
