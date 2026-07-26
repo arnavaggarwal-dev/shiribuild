@@ -35,6 +35,7 @@ struct StarToggleButton: View {
 // MARK: - Game log
 
 struct GameLogView: View {
+    @EnvironmentObject var model: AppModel
     @ObservedObject private var store = GameLogStore.shared
     @State private var selected: GameLogEntry?
 
@@ -44,7 +45,7 @@ struct GameLogView: View {
                 Text("Game Log")
                     .font(GameFont.title(24))
                     .foregroundStyle(Palette.accent)
-                    .padding(.top, 14)
+                    .padding(.top, 40)
 
                 if store.entries.isEmpty {
                     EmptyStateCard(
@@ -71,6 +72,9 @@ struct GameLogView: View {
                     }
                 }
 
+                GhostButton(title: "Back", systemImage: "chevron.left") {
+                    model.route = .lobby
+                }
                 Spacer(minLength: 20)
             }
             .padding(.horizontal, 20)

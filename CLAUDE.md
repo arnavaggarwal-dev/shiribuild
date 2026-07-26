@@ -37,10 +37,8 @@ up automatically — no `project.yml` / `Package.swift` change needed.
 - `Sources/MyApp/GameEngine.swift` — authoritative rules engine (Bot/Local/Host).
 - `Sources/MyApp/Networking.swift` — `WireFraming`, `LANHost`, `LANBrowser`, `LANClient`.
 - `Sources/MyApp/AppModel.swift` — top-level coordinator (route + live backend).
-- `Sources/MyApp/Screens.swift` — all full-screen views (setup, join, waiting,
-  game, winner) + their private helpers.
-- `Sources/MyApp/HomeTabs.swift` — `HomeTab`, `HomeView` (the tabbed home) and the
-  custom tab bar, plus `WiFiNoticeCard` / `EmptyStateCard`.
+- `Sources/MyApp/Screens.swift` — all full-screen views (lobby, setup, join,
+  waiting, game, winner) + their private helpers.
 - `Sources/MyApp/Stores.swift` — `GameLogEntry`, `StarredWord`, `WordFolder` and
   their JSON-file-backed `GameLogStore` / `StarredStore`.
 - `Sources/MyApp/LogScreens.swift` — game history list + detail, and the shared
@@ -63,8 +61,8 @@ up automatically — no `project.yml` / `Package.swift` change needed.
   reading `ThemeStore.shared`, which is what lets a recolor apply without touching
   any of the ~189 `Palette.x` call sites. `RootView` hangs `.id(theme.revision)`
   off the store to force the repaint, since static properties publish nothing.
-- Home is a **hand-rolled** tab bar, not a `TabView` — SwiftUI caps a `TabView`
-  at 5 visible tabs on iPhone and shunts the rest into a system "More" list.
+- The lobby is six `LobbyModeCard` banners (the four game modes + Game Log +
+  Starred Words), each pushing a `Route`. It is deliberately not a `TabView`.
 - `LANHost` wraps one `GameEngine` and broadcasts via `engine.onStateChanged` /
   `engine.onGameOver`. Remote clients' moves arrive as `.action` messages.
 - `LANClient` runs no rules — it mirrors host state and forwards this player's input.

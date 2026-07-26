@@ -541,3 +541,31 @@ struct ConfettiView: View {
     }
 }
 
+
+// MARK: - Empty state
+
+/// Shared "nothing here yet" panel for the Game Log and Starred screens.
+struct EmptyStateCard: View {
+    var icon: String
+    var title: String
+    var message: String
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 30, weight: .light))
+                .foregroundStyle(Palette.dim)
+            Text(title)
+                .font(GameFont.headline(15))
+                .foregroundStyle(Palette.text)
+            Text(message)
+                .font(GameFont.body(12))
+                .foregroundStyle(Palette.dim)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(28)
+        .glassCard()
+    }
+}
