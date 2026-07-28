@@ -7,8 +7,10 @@ below as work lands — check the box **and** strike the text (`~~…~~`) when d
 
 Native SwiftUI word-chain game for iOS (deployment target 17.0). Rebuild of the
 desktop Python originals (`shiritori_bot.py` / `shiritori_net.py`) — same rules,
-same "cosmic nebula" palette. Three ways to play: Bot Mode, Local pass-and-play,
-and LAN multiplayer (Bonjour discovery + fixed TCP port 55731, PC join by IP).
+same "cosmic nebula" palette. Two ways to play: **Local Game** (pass-and-play,
+with 0-7 AI opponents mixed in — this merges what used to be separate "Bot
+Mode" and "Local Play" screens) and **LAN multiplayer** (Bonjour discovery +
+fixed TCP port 55731, PC join by IP).
 
 No backend, no accounts, no analytics, no third-party Swift dependencies.
 
@@ -34,7 +36,10 @@ up automatically — no `project.yml` / `Package.swift` change needed.
 - `Sources/MyApp/Effects.swift` — shake `GeometryEffect` + `View.shake`.
 - `Sources/MyApp/Components.swift` — reusable views: glass card, buttons, sliders,
   score card, word chain, timer, dots, confetti, nebula background.
-- `Sources/MyApp/GameEngine.swift` — authoritative rules engine (Bot/Local/Host).
+- `Sources/MyApp/GameEngine.swift` — authoritative rules engine (Local/Host).
+  `botPlayerNums: Set<Int>` supports any number of simultaneous bot seats —
+  strictly turn-based, so multiple bots need no concurrent bookkeeping, each
+  just triggers `scheduleBotTurn()` on its own turn.
 - `Sources/MyApp/Networking.swift` — `WireFraming`, `LANHost`, `LANBrowser`, `LANClient`.
 - `Sources/MyApp/AppModel.swift` — top-level coordinator (route + live backend).
 - `Sources/MyApp/Screens.swift` — all full-screen views (lobby, setup, join,
@@ -61,8 +66,10 @@ up automatically — no `project.yml` / `Package.swift` change needed.
   reading `ThemeStore.shared`, which is what lets a recolor apply without touching
   any of the ~189 `Palette.x` call sites. `RootView` hangs `.id(theme.revision)`
   off the store to force the repaint, since static properties publish nothing.
-- The lobby is six `LobbyModeCard` banners (the four game modes + Game Log +
+- The lobby is five `LobbyModeCard` banners (Local Game, Host, Join, Game Log,
   Starred Words), each pushing a `Route`. It is deliberately not a `TabView`.
+  Local Game and the old Bot Mode are merged — `PlaySetupView` has two
+  sliders (Humans, Bots) sharing an 8-player cap instead of separate screens.
 - `LANHost` wraps one `GameEngine` and broadcasts via `engine.onStateChanged` /
   `engine.onGameOver`. Remote clients' moves arrive as `.action` messages.
 - `LANClient` runs no rules — it mirrors host state and forwards this player's input.
@@ -154,18 +161,40 @@ hooks that `LANHost` relays.
   treated `.donated` as a no-op), so the state re-assignment above it is
   enough.~~
 - [ ] Clarify the bot-turn staleness guard in `scheduleBotTurn`
-  (`timerGen == gen || botPlayerNum != nil` is effectively always-true for bots).
+  (`timerGen == gen || !botPlayerNums.isEmpty` is effectively always-true
+  whenever any bot is in the game).
 - [x] ~~Randomize the opening word (every game currently starts with "apple").~~
 - [x] ~~Manual IP field: use `.numbersAndPunctuation` instead of `.decimalPad`.~~
 
 ### ✅ Done
-- [x] ~~Game history log + starred words. Home became a 6-tab screen (the four
-  modes + Logs + Starred). Finished games are recorded at `AppModel.showWinner`;
-  words can be starred from the in-game header banner or from any past game's
-  word list; starred words support multi-folder tagging, deletion, and an
-  online definition + example sentence. Settings gained logging on/off, a
-  warned "delete all game logs", an online-lookup opt-out, and RGB/HSV editors
-  for the accent and background colours.~~
+- [x] ~~Merge Bot Mode + Local Play into one `PlaySetupView` behind a single
+  lobby banner ("Local Game", `storefront.fill` icon). Two sliders (Humans,
+  Bots) share an 8-player cap — Humans floors at 1, Bots floors at 0 and its
+  ceiling shrinks as Humans grows. Required `GameEngine.botPlayerNum: Int?` →
+  `botPlayerNums: Set<Int>` to support multiple simultaneous bots; back-to-back
+  bot turns get a randomized 1-6s pause (vs. the fixed 0.9s human→bot pause)
+  so a chain of bots doesn't read as instant, scripted replies. Start is
+  disabled below 2 total players — a 1-player game would crash
+  `GameEngine.eliminate` (`activePlayers[0]` on an empty array).~~
+- [x] ~~Fix the slider tone lingering 2-5s after a fast drag: `Haptics.sliderTick`
+  fired `ToneEngine.play()` on every step with no throttling, and
+  `ToneEngine` has no queue cancellation, so a fast drag across a wide range
+  queued dozens of tones that played back-to-back after the finger lifted.
+  Throttled to ~55ms between tones (haptic feedback stays untouched — it
+  doesn't queue audibly).~~
+- [x] ~~FPS pass, scoped to zero visual risk: `LazyVStack` for the Game Log and
+  Starred Words lists (were eager `VStack`s); `.drawingGroup()` on the
+  nebula background's three animating blurred blobs only (flattens three
+  offscreen blur passes into one Metal-backed layer — deliberately **not**
+  applied to anything with `.ultraThinMaterial`, since that would sample a
+  rasterized backdrop instead of the real one and risk visibly breaking the
+  translucency).~~
+- [x] ~~Game history log + starred words. Finished games are recorded at
+  `AppModel.showWinner`; words can be starred from the in-game header banner
+  or from any past game's word list; starred words support multi-folder
+  tagging, deletion, and an online definition + example sentence. Settings
+  gained logging on/off, a warned "delete all game logs", an online-lookup
+  opt-out, and RGB/HSV editors for the accent and background colours.~~
 - [x] ~~Add `README.md` (merged to `main`, PR #1).~~
 - [x] ~~Add an in-game **Leave** button (was no way to quit/pause once a game
   started). `QuitButton` with a confirm dialog on every game screen →

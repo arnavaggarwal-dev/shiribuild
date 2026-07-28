@@ -119,6 +119,15 @@ struct AnimatedNebulaBackground: View {
                                 y: blobsDrift ? geo.size.height * 0.75 : geo.size.height * 0.9)
                         .animation(.easeInOut(duration: 22).repeatForever(autoreverses: true), value: blobsDrift)
                 }
+                // These three blurred circles sit behind every screen and
+                // animate for the app's entire lifetime — the single
+                // steadiest GPU cost in the app. drawingGroup() rasterizes
+                // them into one Metal-backed layer instead of three separate
+                // offscreen blur passes every frame. Safe here specifically
+                // because there's no material/backdrop sampling involved,
+                // just solid-color circles + blur — same pixels, cheaper to
+                // produce.
+                .drawingGroup()
             }
             .ignoresSafeArea()
 

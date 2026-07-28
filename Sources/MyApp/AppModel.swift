@@ -12,9 +12,13 @@ final class AppModel: ObservableObject {
     @Published var route: Route = .lobby
 
     // setup screen selections, kept as Double for direct Slider binding
-    @Published var botHumanCount: Double = 1
+    /// Merged Bot+Local setup: humans and bots share one 8-player cap.
+    /// Humans floors at 1 (enforced by the setup view's slider binding, not
+    /// here); bots floors at 0, which is what makes this screen also cover
+    /// what used to be pure Local Play.
+    @Published var playHumanCount: Double = 2
+    @Published var playBotCount: Double = 0
     @Published var botDifficultyChoice: Double = 50
-    @Published var localPlayerCount: Double = 2
     @Published var hostPlayerCount: Double = 2
 
     let dict = DictionaryStore()
@@ -68,33 +72,29 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: bot mode
+    // MARK: merged bot + local play
 
-    func startBotGame() {
-        let n = Int(botHumanCount) + 1
-        let e = GameEngine(dict: dict, numPlayers: n, botPlayerNum: n, botDifficulty: Int(botDifficultyChoice))
+    /// Total players across both sliders, for the setup screen's Start-button
+    /// gate (a 1-player game would crash `GameEngine.eliminate` — see
+    /// `PlaySetupView`).
+    var playTotalCount: Int { Int(playHumanCount) + Int(playBotCount) }
+
+    func startGame() {
+        let humans = Int(playHumanCount)
+        let bots = Int(playBotCount)
+        let n = humans + bots
+        // Bot seats are the last `bots` seats, humans take the rest.
+        let botSeats: Set<Int> = bots > 0 ? Set((humans + 1)...(humans + bots)) : []
+        let e = GameEngine(dict: dict, numPlayers: n, botPlayerNums: botSeats,
+                           botDifficulty: Int(botDifficultyChoice))
         e.onGameOver = { [weak self, weak e] winner, note in
             guard let self, let e else { return }
-            self.showWinner(from: e.state, winner: winner, botNum: n, botDifficulty: e.botDifficulty,
-                            note: note, myPlayerNum: nil, mode: .bot)
+            self.showWinner(from: e.state, winner: winner, botPlayerNums: botSeats,
+                            botDifficulty: bots > 0 ? e.botDifficulty : nil,
+                            note: note, myPlayerNum: nil, mode: bots > 0 ? .bot : .local)
         }
         engine = e
-        route = .botGame
-        e.start()
-    }
-
-    // MARK: local pass-and-play
-
-    func startLocalGame() {
-        let n = Int(localPlayerCount)
-        let e = GameEngine(dict: dict, numPlayers: n, botPlayerNum: nil)
-        e.onGameOver = { [weak self, weak e] winner, note in
-            guard let self, let e else { return }
-            self.showWinner(from: e.state, winner: winner, botNum: nil, botDifficulty: nil,
-                            note: note, myPlayerNum: nil, mode: .local)
-        }
-        engine = e
-        route = .localGame
+        route = .playGame
         e.start()
     }
 
@@ -105,7 +105,7 @@ final class AppModel: ObservableObject {
         let host = LANHost(numPlayers: n, dict: dict)
         host.onGameEnded = { [weak self, weak host] winner, note in
             guard let self, let host else { return }
-            self.showWinner(from: host.engine.state, winner: winner, botNum: nil, botDifficulty: nil,
+            self.showWinner(from: host.engine.state, winner: winner, botPlayerNums: [], botDifficulty: nil,
                             note: note, myPlayerNum: 1, mode: .host)
         }
         host.startHosting(deviceName: UIDevice.current.name)
@@ -141,7 +141,7 @@ final class AppModel: ObservableObject {
 
     func clientGameEnded() {
         guard let c = lanClient else { return }
-        showWinner(from: c.state, winner: c.winner ?? 0, botNum: nil, botDifficulty: nil,
+        showWinner(from: c.state, winner: c.winner ?? 0, botPlayerNums: [], botDifficulty: nil,
                   note: c.message, myPlayerNum: c.myPlayerNum, mode: .client)
     }
 
@@ -150,9 +150,9 @@ final class AppModel: ObservableObject {
     /// Every finished game — bot, local, hosted and joined alike — funnels
     /// through here, which makes it the one place the history log needs to
     /// hook. `mode` is passed in explicitly rather than inferred from
-    /// `botNum`/`myPlayerNum`, since those can't distinguish a local
+    /// `botPlayerNums`/`myPlayerNum`, since those can't distinguish a local
     /// pass-and-play game from a joined LAN one.
-    private func showWinner(from state: GameState, winner: Int, botNum: Int?, botDifficulty: Int?,
+    private func showWinner(from state: GameState, winner: Int, botPlayerNums: Set<Int>, botDifficulty: Int?,
                              note: String, myPlayerNum: Int?, mode: GameMode) {
         if AppSettings.loggingEnabled {
             GameLogStore.shared.record(GameLogEntry(
@@ -160,7 +160,7 @@ final class AppModel: ObservableObject {
                 mode: mode,
                 numPlayers: state.numPlayers,
                 winner: winner,
-                winnerWasBot: botNum != nil && winner == botNum,
+                winnerWasBot: botPlayerNums.contains(winner),
                 myPlayerNum: myPlayerNum,
                 scores: state.scores,
                 words: state.wordList,
@@ -171,14 +171,14 @@ final class AppModel: ObservableObject {
 
         let info = WinnerInfo(
             winner: winner,
-            isBot: botNum != nil && winner == botNum,
+            isBot: botPlayerNums.contains(winner),
             scores: state.scores,
             active: state.activePlayers,
             numPlayers: state.numPlayers,
             wordsPlayed: state.wordList.count,
             botDifficulty: botDifficulty,
             myPlayerNum: myPlayerNum,
-            names: { p in (botNum != nil && p == botNum) ? "🤖 Bot" : "Player \(p)" },
+            names: { p in botPlayerNums.contains(p) ? "🤖 Bot" : "Player \(p)" },
             extraNote: note
         )
         route = .winner(info)

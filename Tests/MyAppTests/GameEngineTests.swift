@@ -15,8 +15,8 @@ private func makeDict() -> DictionaryStore {
 }
 
 private func makeEngine(state: GameState, dict: DictionaryStore = makeDict(),
-                         numPlayers: Int? = nil, botPlayerNum: Int? = nil) -> GameEngine {
-    let engine = GameEngine(dict: dict, numPlayers: numPlayers ?? state.numPlayers, botPlayerNum: botPlayerNum)
+                         numPlayers: Int? = nil, botPlayerNums: Set<Int> = []) -> GameEngine {
+    let engine = GameEngine(dict: dict, numPlayers: numPlayers ?? state.numPlayers, botPlayerNums: botPlayerNums)
     engine.state = state
     return engine
 }
@@ -144,7 +144,7 @@ final class GameEngineTests: XCTestCase {
     func testBotTurnPlaysAValidWordAndAdvances() {
         let state = GameState(currentPlayer: 2, previousWord: "cat", wordList: ["cat"],
                                scores: [0, 0], activePlayers: [1, 2], forbidden: "z", numPlayers: 2)
-        let engine = makeEngine(state: state, botPlayerNum: 2)
+        let engine = makeEngine(state: state, botPlayerNums: [2])
 
         let botPlayedExpectation = expectation(description: "bot plays its turn")
         engine.onStateChanged = { newState, _, _ in
@@ -157,5 +157,26 @@ final class GameEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.wordList.count, 2)
         XCTAssertTrue(["tan", "tip", "top"].contains(engine.state.wordList[1]))
         XCTAssertEqual(engine.state.currentPlayer, 1)
+    }
+
+    /// Multiple simultaneous bot seats: two bots in a row should both take
+    /// their turn without any human input, ending back on the human seat.
+    /// The bot-to-bot transition uses a randomized 1-6s pause (vs. the fixed
+    /// 0.9s human-to-bot pause), so this test's timeout is generous.
+    func testConsecutiveBotTurnsBothPlay() {
+        let state = GameState(currentPlayer: 2, previousWord: "cat", wordList: ["cat"],
+                               scores: [0, 0, 0], activePlayers: [1, 2, 3], forbidden: "z", numPlayers: 3)
+        let engine = makeEngine(state: state, botPlayerNums: [2, 3])
+
+        let bothBotsPlayed = expectation(description: "both bots play their turn")
+        engine.onStateChanged = { newState, _, _ in
+            if newState.wordList.count == 3 { bothBotsPlayed.fulfill() }
+        }
+
+        engine.start()
+        waitForExpectations(timeout: 12.0)
+
+        XCTAssertEqual(engine.state.wordList.count, 3)
+        XCTAssertEqual(engine.state.currentPlayer, 1, "turn should land back on the human seat")
     }
 }

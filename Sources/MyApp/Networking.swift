@@ -76,8 +76,7 @@ final class LANHost: ObservableObject {
     init(numPlayers: Int, dict: DictionaryStore) {
         self.numPlayers = numPlayers
         // The host plays seat 1 on this device; seats 2...N are remote.
-        self.engine = GameEngine(dict: dict, numPlayers: numPlayers, botPlayerNum: nil,
-                                 localPlayerNum: 1)
+        self.engine = GameEngine(dict: dict, numPlayers: numPlayers, localPlayerNum: 1)
         engine.onStateChanged = { [weak self] state, text, color in
             self?.broadcast(.stateEnvelope(.stateUpdate, state: state, text: text, color: color))
         }
