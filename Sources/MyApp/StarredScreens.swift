@@ -57,8 +57,13 @@ struct StarredView: View {
                             message: "Long-press a word in All to file it in here."
                         )
                     } else {
-                        ForEach(visibleWords) { entry in
-                            wordRow(entry)
+                        // Lazy so an off-screen row isn't rendered until it
+                        // scrolls into view — same rows, same order, cheaper
+                        // as the starred list grows.
+                        LazyVStack(spacing: 14) {
+                            ForEach(visibleWords) { entry in
+                                wordRow(entry)
+                            }
                         }
                     }
                 }

@@ -90,6 +90,10 @@ final class ToneEngine {
 // MARK: - Haptics
 
 enum Haptics {
+    /// Throttle state for `sliderTick`'s tone only — see that function for why.
+    private static var lastSliderTickTime = Date.distantPast
+    private static let sliderTickMinInterval: TimeInterval = 0.055
+
     /// Every accepted word: success haptic + a bright high-pitched ding.
     /// Pitch is fixed high here (this is "the correct answer" cue, not a
     /// graded one) — the graded/"tougher = higher" pitch lives in sliderTick.
@@ -143,6 +147,16 @@ enum Haptics {
             let gen = UIImpactFeedbackGenerator(style: f > 0.66 ? .heavy : (f > 0.33 ? .medium : .light))
             gen.impactOccurred(intensity: 0.5 + f * 0.5)
         }
+        // The tone is throttled but the haptic above isn't: a fast drag can
+        // fire this dozens of times a second, and ToneEngine.play() has no
+        // queue cancellation, so every call schedules another buffer that
+        // just lines up behind the last one — a 100-step drag would leave
+        // several seconds of tones still playing well after the finger
+        // lifts. Haptics don't have this problem (they don't queue audibly),
+        // so only the tone needs gating.
+        let now = Date()
+        guard now.timeIntervalSince(lastSliderTickTime) >= sliderTickMinInterval else { return }
+        lastSliderTickTime = now
         ToneEngine.shared.play(frequency: 260 + f * 620, duration: 0.06, volume: 0.28)
     }
 

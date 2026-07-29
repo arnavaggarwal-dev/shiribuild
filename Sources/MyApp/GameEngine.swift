@@ -21,7 +21,12 @@ final class GameEngine: ObservableObject {
     @Published var lastEvent: GameEvent = .none
     @Published var shakeTrigger = 0
 
-    let botPlayerNum: Int?
+    /// Seats played by the AI. Empty for a pure human game. More than one
+    /// seat is fine — the engine is strictly turn-based (only ever one
+    /// `currentPlayer` at a time), so multiple bots just means several seats
+    /// independently trigger `scheduleBotTurn()` when it becomes their turn;
+    /// no concurrent-bot bookkeeping needed.
+    let botPlayerNums: Set<Int>
     /// Which seat this device actually controls, if any. nil for bot/local
     /// games (every seat is played on this device); set to the host's seat
     /// (1) for LAN host games, so feedback for a *remote* player's move isn't
@@ -47,18 +52,18 @@ final class GameEngine: ObservableObject {
 
     var dangerPoolPercent: Int { 100 - botDifficulty }
 
-    init(dict: DictionaryStore, numPlayers: Int, botPlayerNum: Int?, botDifficulty: Int = 50,
+    init(dict: DictionaryStore, numPlayers: Int, botPlayerNums: Set<Int> = [], botDifficulty: Int = 50,
          localPlayerNum: Int? = nil) {
         self.dict = dict
-        self.botPlayerNum = botPlayerNum
+        self.botPlayerNums = botPlayerNums
         self.botDifficulty = botDifficulty
         self.localPlayerNum = localPlayerNum
         self.state = .fresh(numPlayers: numPlayers, dict: dict)
     }
 
     func start() {
-        if state.currentPlayer == botPlayerNum {
-            scheduleBotTurn()
+        if isBot(state.currentPlayer) {
+            scheduleBotTurn(afterBot: false)
         } else {
             startTimer()
         }
@@ -70,7 +75,7 @@ final class GameEngine: ObservableObject {
         timerGen += 1
     }
 
-    private func isBot(_ p: Int) -> Bool { botPlayerNum != nil && p == botPlayerNum }
+    private func isBot(_ p: Int) -> Bool { botPlayerNums.contains(p) }
 
     private func nextPlayer() -> Int {
         guard let idx = state.activePlayers.firstIndex(of: state.currentPlayer) else { return state.currentPlayer }
@@ -167,6 +172,7 @@ final class GameEngine: ObservableObject {
     private func eliminate(_ p: Int, reason: String) {
         let color: Color = isBot(p) ? Palette.redBright : Palette.orange
         let next = nextPlayer()
+        let moverWasBot = isBot(p)
         state.activePlayers.removeAll { $0 == p }
         lastEvent = .eliminated(player: p, isBot: isBot(p))
         Haptics.loser()
@@ -182,17 +188,18 @@ final class GameEngine: ObservableObject {
         state.currentPlayer = next
         onStateChanged?(state, reason, color)
         if isBot(next) {
-            scheduleBotTurn()
+            scheduleBotTurn(afterBot: moverWasBot)
         } else {
             startTimer()
         }
     }
 
     private func advanceTurn() {
+        let moverWasBot = isBot(state.currentPlayer)
         state.currentPlayer = nextPlayer()
         onStateChanged?(state, message, messageColor)
         if isBot(state.currentPlayer) {
-            scheduleBotTurn()
+            scheduleBotTurn(afterBot: moverWasBot)
         } else {
             startTimer()
         }
@@ -226,18 +233,24 @@ final class GameEngine: ObservableObject {
 
     // MARK: bot
 
-    private func scheduleBotTurn() {
+    /// `afterBot`: true when the seat that just moved was also a bot. A
+    /// human-then-bot transition keeps the short "thinking" pause; two bots
+    /// going back-to-back get a randomized 1-6s pause instead, so a chain of
+    /// bot turns doesn't read as instant, obviously-scripted replies.
+    private func scheduleBotTurn(afterBot: Bool) {
         isBotThinking = true
         lastEvent = .botThinking
         let gen = timerGen
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
-            guard let self, self.timerGen == gen || self.botPlayerNum != nil else { return }
+        let delay = afterBot ? Double.random(in: 1...6) : 0.9
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.timerGen == gen || !self.botPlayerNums.isEmpty else { return }
             self.doBotTurn()
         }
     }
 
     private func doBotTurn() {
-        guard !isGameOver, let botNum = botPlayerNum, state.currentPlayer == botNum else { return }
+        guard !isGameOver, isBot(state.currentPlayer) else { return }
+        let botNum = state.currentPlayer
         isBotThinking = false
         guard let last = state.previousWord.last,
               let word = botPickWord(start: last, used: Set(state.wordList), forbidden: state.forbiddenChar,

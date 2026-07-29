@@ -63,8 +63,7 @@ struct RootView: View {
     private var routedContent: some View {
         switch model.route {
         case .lobby: LobbyView()
-        case .botSetup: BotSetupView()
-        case .localSetup: LocalSetupView()
+        case .playSetup: PlaySetupView()
         case .hostSetup: HostSetupView()
         case .joinList: JoinListView(browser: model.browser)
         case .logs: GameLogView()
@@ -73,8 +72,7 @@ struct RootView: View {
             if let host = model.lanHost { HostWaitingRoomView(host: host, total: total) }
         case .waitingClient:
             if let client = model.lanClient { ClientWaitingRoomView(client: client) }
-        case .botGame: EngineGameScreen(mode: .bot)
-        case .localGame: EngineGameScreen(mode: .local)
+        case .playGame: EngineGameScreen(mode: .play)
         case .hostGame: EngineGameScreen(mode: .host)
         case .clientGame: ClientGameScreen()
         case .winner(let info): WinnerView(info: info)

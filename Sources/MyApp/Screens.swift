@@ -84,16 +84,10 @@ struct LobbyView: View {
                 .padding(.top, 36)
 
                 LobbyModeCard(
-                    title: "Bot Mode", subtitle: "1-7 players + AI",
-                    detail: "Play with friends on this device, plus an AI opponent with adjustable difficulty.",
-                    icon: "cpu", accent: Palette.borderActive
-                ) { model.route = .botSetup }
-
-                LobbyModeCard(
-                    title: "Local Play", subtitle: "2-8 players, same device",
-                    detail: "Pass the phone or tablet around the table \u{2014} everyone shares this screen.",
-                    icon: "person.2.fill", accent: Palette.accent
-                ) { model.route = .localSetup }
+                    title: "Local Game", subtitle: "1-8 players \u{00B7} bots optional",
+                    detail: "Pass the device around the table, and add AI opponents if you want \u{2014} humans and bots share the same 8-player table.",
+                    icon: "storefront.fill", accent: Palette.accent
+                ) { model.route = .playSetup }
 
                 LobbyModeCard(
                     title: "Host a Game", subtitle: "LAN \u{00B7} up to 8 players",
@@ -236,56 +230,113 @@ private struct SetupScaffold<Content: View>: View {
     }
 }
 
-struct BotSetupView: View {
+/// Merged Bot Mode + Local Play. Two sliders — Humans, Bots — share one
+/// 8-player table: Humans floors at 1 (its track still shows the full 0-8
+/// scale, matching Bots' scale, but the value can't be dragged below one),
+/// Bots floors at 0 and its ceiling shrinks as Humans grows so the total
+/// never exceeds 8. Bots=0 is what used to be "Local Play"; Bots>0 is what
+/// used to be "Bot Mode" — same engine path either way now.
+struct PlaySetupView: View {
     @EnvironmentObject var model: AppModel
 
-    var body: some View {
-        SetupScaffold(
-            title: "Bot Mode",
-            startTitle: "Start Game",
-            onStart: { model.startBotGame() },
-            onBack: { model.route = .lobby }
-        ) {
-            LabeledSlider(label: "Human players", valueText: "\(Int(model.botHumanCount))",
-                         value: $model.botHumanCount, range: 1...7, step: 1)
-            Text("The bot always joins as an extra player.")
-                .font(GameFont.caption()).foregroundStyle(Palette.dim)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private var totalCount: Int { model.playTotalCount }
 
-            Divider().overlay(Palette.border)
-
-            LabeledSlider(label: "Bot difficulty", valueText: "\(Int(model.botDifficultyChoice))",
-                         value: $model.botDifficultyChoice, range: 1...100, step: 1,
-                         tint: difficultyColor(Int(model.botDifficultyChoice)))
-            HStack {
-                Text("1 Easy").foregroundStyle(Palette.green)
-                Spacer()
-                Text("50 Medium").foregroundStyle(Palette.orange)
-                Spacer()
-                Text("100 Expert").foregroundStyle(Palette.redBright)
+    private var humanBinding: Binding<Double> {
+        Binding(
+            get: { model.playHumanCount },
+            set: { newValue in
+                let clamped = max(1, min(8, newValue.rounded()))
+                model.playHumanCount = clamped
+                let maxBots = 8 - Int(clamped)
+                if model.playBotCount > Double(maxBots) {
+                    model.playBotCount = Double(maxBots)
+                }
             }
-            .font(GameFont.caption(10))
-            Text(difficultyLabel(Int(model.botDifficultyChoice)))
-                .font(GameFont.caption(10)).foregroundStyle(Palette.dim)
-        }
+        )
     }
-}
 
-struct LocalSetupView: View {
-    @EnvironmentObject var model: AppModel
+    private var botBinding: Binding<Double> {
+        Binding(
+            get: { model.playBotCount },
+            set: { newValue in
+                let maxBots = 8 - Int(model.playHumanCount)
+                model.playBotCount = max(0, min(Double(maxBots), newValue.rounded()))
+            }
+        )
+    }
 
     var body: some View {
         SetupScaffold(
             title: "Local Game",
             startTitle: "Start Game",
-            onStart: { model.startLocalGame() },
+            startEnabled: totalCount >= 2,
+            onStart: { model.startGame() },
             onBack: { model.route = .lobby }
         ) {
-            LabeledSlider(label: "Number of players", valueText: "\(Int(model.localPlayerCount))",
-                         value: $model.localPlayerCount, range: 2...8, step: 1)
-            Text("Pass the device to whoever's turn it is.")
+            PlayerProfileCard(icon: "person.2.fill", label: "Humans",
+                              count: Int(model.playHumanCount), accent: Palette.accent)
+            LabeledSlider(label: "Humans", valueText: "\(Int(model.playHumanCount))",
+                         value: humanBinding, range: 0...8, step: 1)
+
+            Divider().overlay(Palette.border)
+
+            PlayerProfileCard(icon: "cpu", label: "Bots",
+                              count: Int(model.playBotCount), accent: Palette.borderActive)
+            LabeledSlider(label: "Bots", valueText: "\(Int(model.playBotCount))",
+                         value: botBinding, range: 0...8, step: 1)
+
+            if totalCount < 2 {
+                Text("Add at least 2 players total to start.")
+                    .font(GameFont.caption(10)).foregroundStyle(Palette.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if Int(model.playBotCount) > 0 {
+                Divider().overlay(Palette.border)
+
+                LabeledSlider(label: "Bot difficulty", valueText: "\(Int(model.botDifficultyChoice))",
+                             value: $model.botDifficultyChoice, range: 1...100, step: 1,
+                             tint: difficultyColor(Int(model.botDifficultyChoice)))
+                HStack {
+                    Text("1 Easy").foregroundStyle(Palette.green)
+                    Spacer()
+                    Text("50 Medium").foregroundStyle(Palette.orange)
+                    Spacer()
+                    Text("100 Expert").foregroundStyle(Palette.redBright)
+                }
+                .font(GameFont.caption(10))
+                Text(difficultyLabel(Int(model.botDifficultyChoice)))
+                    .font(GameFont.caption(10)).foregroundStyle(Palette.dim)
+                Text("Applies to every bot at the table.")
+                    .font(GameFont.caption(10)).foregroundStyle(Palette.dim)
+            }
+
+            Text("Pass the device to whoever's turn it is \u{2014} bots take their own turn automatically.")
                 .font(GameFont.caption()).foregroundStyle(Palette.dim)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct PlayerProfileCard: View {
+    var icon: String
+    var label: String
+    var count: Int
+    var accent: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(accent.opacity(0.18)).frame(width: 40, height: 40)
+                    .overlay(Circle().strokeBorder(accent.opacity(0.35), lineWidth: 1))
+                Image(systemName: icon).font(.system(size: 17, weight: .semibold)).foregroundStyle(accent)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label).font(GameFont.caption(11)).foregroundStyle(Palette.dim)
+                Text("\(count)").font(GameFont.headline(18)).foregroundStyle(Palette.text)
+                    .contentTransition(.numericText())
+            }
+            Spacer()
         }
     }
 }
@@ -687,7 +738,7 @@ struct ScoreStrip: View {
     var scores: [Int]
     var activePlayers: [Int]
     var currentPlayer: Int
-    var botPlayerNum: Int?
+    var botPlayerNums: Set<Int> = []
     var myPlayerNum: Int?
 
     var body: some View {
@@ -696,7 +747,7 @@ struct ScoreStrip: View {
                 ForEach(1...max(numPlayers, 1), id: \.self) { p in
                     ScoreCardView(
                         playerNum: p,
-                        isBot: p == botPlayerNum,
+                        isBot: botPlayerNums.contains(p),
                         score: p - 1 < scores.count ? scores[p - 1] : 0,
                         isActive: p == currentPlayer && activePlayers.contains(p),
                         isOut: !activePlayers.contains(p),
@@ -859,7 +910,7 @@ struct GameView: View {
     @State private var text = ""
 
     private var inputEnabled: Bool {
-        engine.state.currentPlayer != engine.botPlayerNum &&
+        !engine.botPlayerNums.contains(engine.state.currentPlayer) &&
         (myPlayerNum == nil || engine.state.currentPlayer == myPlayerNum)
     }
 
@@ -891,9 +942,9 @@ struct GameView: View {
 
                 ScoreStrip(numPlayers: engine.state.numPlayers, scores: engine.state.scores,
                           activePlayers: engine.state.activePlayers, currentPlayer: engine.state.currentPlayer,
-                          botPlayerNum: engine.botPlayerNum, myPlayerNum: myPlayerNum)
+                          botPlayerNums: engine.botPlayerNums, myPlayerNum: myPlayerNum)
 
-                if engine.botPlayerNum != nil {
+                if !engine.botPlayerNums.isEmpty {
                     DifficultyLiveCard(difficulty: difficultyBinding, dangerPoolPercent: engine.dangerPoolPercent)
                 }
 
@@ -915,7 +966,7 @@ struct GameView: View {
     }
 }
 
-enum EngineGameMode { case bot, local, host }
+enum EngineGameMode { case play, host }
 
 struct EngineGameScreen: View {
     @EnvironmentObject var model: AppModel
@@ -923,9 +974,7 @@ struct EngineGameScreen: View {
 
     var body: some View {
         switch mode {
-        case .bot:
-            if let e = model.engine { GameView(engine: e, myPlayerNum: nil) }
-        case .local:
+        case .play:
             if let e = model.engine { GameView(engine: e, myPlayerNum: nil) }
         case .host:
             if let h = model.lanHost { GameView(engine: h.engine, myPlayerNum: 1) }
@@ -977,7 +1026,7 @@ struct ClientGameView: View {
 
                 ScoreStrip(numPlayers: client.state.numPlayers, scores: client.state.scores,
                           activePlayers: client.state.activePlayers, currentPlayer: client.state.currentPlayer,
-                          botPlayerNum: nil, myPlayerNum: client.myPlayerNum)
+                          myPlayerNum: client.myPlayerNum)
 
                 NotepadCard()
                 CommandsCard()

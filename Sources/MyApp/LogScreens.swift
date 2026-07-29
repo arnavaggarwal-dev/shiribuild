@@ -61,14 +61,19 @@ struct GameLogView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    ForEach(store.entries) { entry in
-                        Button {
-                            Haptics.tap()
-                            selected = entry
-                        } label: {
-                            GameLogRow(entry: entry)
+                    // Lazy so off-screen rows aren't rendered until scrolled
+                    // into view — same rows/order, cheaper as history grows
+                    // (capped at 500 entries, but that's still a lot eagerly).
+                    LazyVStack(spacing: 14) {
+                        ForEach(store.entries) { entry in
+                            Button {
+                                Haptics.tap()
+                                selected = entry
+                            } label: {
+                                GameLogRow(entry: entry)
+                            }
+                            .buttonStyle(PressableGlassButtonStyle())
                         }
-                        .buttonStyle(PressableGlassButtonStyle())
                     }
                 }
 

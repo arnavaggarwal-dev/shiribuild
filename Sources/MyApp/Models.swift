@@ -122,16 +122,16 @@ struct NetMessage: Codable {
 /// wants full control over cross-fades against the nebula background.
 enum Route: Equatable {
     case lobby
-    case botSetup
-    case localSetup
+    /// Setup for the merged Bot+Local mode — two sliders (humans, bots) that
+    /// share an 8-player cap, rather than separate bot/local screens.
+    case playSetup
     case hostSetup
     case joinList
     case logs
     case starred
     case waitingHost(total: Int)
     case waitingClient
-    case botGame
-    case localGame
+    case playGame
     case hostGame
     case clientGame
     case winner(WinnerInfo)
